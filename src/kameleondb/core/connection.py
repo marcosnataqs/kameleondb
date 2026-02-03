@@ -13,10 +13,34 @@ if TYPE_CHECKING:
     from sqlalchemy.engine.url import URL
 
 
+def _normalize_postgresql_url(url: str) -> str:
+    """Normalize PostgreSQL URL to use psycopg3 driver.
+
+    SQLAlchemy defaults to psycopg2 for 'postgresql://' URLs.
+    This converts to 'postgresql+psycopg://' to use psycopg3.
+
+    Args:
+        url: Database URL
+
+    Returns:
+        Normalized URL using psycopg3 driver
+    """
+    # Already using psycopg3 or another driver
+    if "postgresql+" in url:
+        return url
+
+    # Convert postgresql:// to postgresql+psycopg://
+    if url.startswith("postgresql://"):
+        return url.replace("postgresql://", "postgresql+psycopg://", 1)
+
+    return url
+
+
 class DatabaseConnection:
     """Manages PostgreSQL database connections.
 
     Supports PostgreSQL databases only (with JSONB).
+    Uses psycopg3 as the database driver.
     """
 
     SUPPORTED_DIALECTS = ("postgresql",)
@@ -26,12 +50,13 @@ class DatabaseConnection:
 
         Args:
             url: PostgreSQL connection URL (e.g., "postgresql://user:pass@localhost/db")
+                 Automatically uses psycopg3 driver.
             echo: Whether to echo SQL statements (for debugging)
 
         Raises:
             ConnectionError: If connection fails or dialect is not PostgreSQL
         """
-        self._url = str(url)
+        self._url = _normalize_postgresql_url(str(url))
         self._echo = echo
         self._engine: Engine | None = None
         self._session_factory: sessionmaker[Session] | None = None
