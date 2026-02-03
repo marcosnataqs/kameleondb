@@ -334,8 +334,11 @@ class JSONBQuery:
                                 # Simple equality using containment operator
                                 serialized = self._serialize_value(value, field.field_type)
                                 # Use @> containment operator (uses GIN index efficiently)
+                                # Use column_name (storage key) for JSONB access, not logical name
                                 query = query.filter(
-                                    Record.data.op("@>")(cast({field_name: serialized}, JSONB))
+                                    Record.data.op("@>")(
+                                        cast({field.column_name: serialized}, JSONB)
+                                    )
                                 )
 
                 # Get total count before pagination
