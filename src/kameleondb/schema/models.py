@@ -361,7 +361,7 @@ class Record(Base):
     )
 
     # PostgreSQL native JSONB column stores all field values
-    data: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    data: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(

@@ -43,5 +43,6 @@ class TableManager:
 
         # Create JSONB table using SQLAlchemy's create_all
         # This only creates tables that don't exist
-        Base.metadata.create_all(self._engine, tables=[Record.__table__])
+        # Note: Record.__table__ returns Table which is a subclass of FromClause
+        Base.metadata.create_all(self._engine, tables=[Record.__table__])  # type: ignore[list-item]
         self._initialized = True

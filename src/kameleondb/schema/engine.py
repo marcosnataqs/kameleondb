@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from types import EllipsisType
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy.orm import Session
@@ -605,8 +606,8 @@ class SchemaEngine:
         required: bool | None = None,
         unique: bool | None = None,
         indexed: bool | None = None,
-        default: Any = ...,  # Use ... as sentinel to distinguish from None
-        description: str | None = ...,  # Use ... as sentinel
+        default: Any | EllipsisType = ...,  # Use ... as sentinel to distinguish from None
+        description: str | None | EllipsisType = ...,  # Use ... as sentinel
         created_by: str | None = None,
         reason: str | None = None,
     ) -> FieldDefinition:

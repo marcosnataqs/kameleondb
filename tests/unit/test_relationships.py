@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
-
-import pytest
-
 from kameleondb.core.types import (
     OnDeleteActionType,
     RelationshipInfo,
@@ -13,7 +9,6 @@ from kameleondb.core.types import (
     StorageModeType,
 )
 from kameleondb.exceptions import (
-    EntityNotFoundError,
     InvalidOnDeleteActionError,
     InvalidRelationshipTypeError,
     RelationshipAlreadyExistsError,
@@ -21,7 +16,6 @@ from kameleondb.exceptions import (
 )
 from kameleondb.schema.models import (
     EntityDefinition,
-    FieldDefinition,
     JunctionTable,
     OnDeleteAction,
     RelationshipDefinition,

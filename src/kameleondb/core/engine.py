@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import EllipsisType
 from typing import Any
 
 from kameleondb.core.connection import DatabaseConnection
@@ -336,8 +337,8 @@ class Entity:
         required: bool | None = None,
         unique: bool | None = None,
         indexed: bool | None = None,
-        default: Any = ...,
-        description: str | None = ...,
+        default: Any | EllipsisType = ...,
+        description: str | None | EllipsisType = ...,
         created_by: str | None = None,
         reason: str | None = None,
     ) -> EntityInfo:

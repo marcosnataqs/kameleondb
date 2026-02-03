@@ -367,7 +367,7 @@ class JSONBQuery:
         except Exception as e:
             raise QueryError(f"Failed to execute query: {e}") from e
 
-    def _get_jsonb_expression(self, field: FieldDefinition):
+    def _get_jsonb_expression(self, field: FieldDefinition) -> Any:
         """Get PostgreSQL JSONB expression with proper type cast."""
         field_name = field.name
         field_type = field.field_type
@@ -376,7 +376,7 @@ class JSONBQuery:
         if field_type == "int":
             return cast(Record.data[field_name].astext, type_=JSONB).cast(type_=Integer)
         elif field_type == "float":
-            return cast(Record.data[field_name].astext, type_=Numeric)
+            return cast(Record.data[field_name].astext, type_=Numeric())
         elif field_type == "bool":
             return cast(Record.data[field_name].astext, type_=Boolean)
         else:
@@ -432,7 +432,7 @@ class JSONBQuery:
             if field_type == "int":
                 query = query.filter(cast(jsonb_field, Integer) != value)
             elif field_type == "float":
-                query = query.filter(cast(jsonb_field, Numeric) != value)
+                query = query.filter(cast(jsonb_field, Numeric()) != value)
             elif field_type == "bool":
                 query = query.filter(cast(jsonb_field, Boolean) != value)
             else:
@@ -443,7 +443,7 @@ class JSONBQuery:
             if field_type == "int":
                 casted = cast(jsonb_field, Integer)
             elif field_type == "float":
-                casted = cast(jsonb_field, Numeric)
+                casted = cast(jsonb_field, Numeric())  # type: ignore[arg-type]
             else:
                 casted = jsonb_field
 
@@ -471,7 +471,7 @@ class JSONBQuery:
             if field_type == "int":
                 casted = cast(jsonb_field, Integer)
             elif field_type == "float":
-                casted = cast(jsonb_field, Numeric)
+                casted = cast(jsonb_field, Numeric())  # type: ignore[arg-type]
             else:
                 casted = jsonb_field
             query = query.filter(casted.in_(serialized_values))

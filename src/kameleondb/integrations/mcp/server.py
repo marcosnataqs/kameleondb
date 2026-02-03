@@ -11,7 +11,7 @@ import logging
 import sys
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import FastMCP  # type: ignore[import-not-found]
 
 from kameleondb import KameleonDB
 
