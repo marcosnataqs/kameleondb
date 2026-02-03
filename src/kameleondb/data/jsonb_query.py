@@ -73,6 +73,9 @@ class JSONBQuery:
         self._entity_name = entity_name
         self._fields = {f.name: f for f in fields}
         self._field_names = set(self._fields.keys())
+        # Mapping from logical name to storage column name (for renamed fields)
+        self._name_to_column = {f.name: f.column_name for f in fields}
+        self._column_to_name = {f.column_name: f.name for f in fields}
         # System columns available on all records
         self._system_columns = {"id", "created_at", "updated_at", "created_by"}
         self._all_columns = self._field_names | self._system_columns
@@ -138,9 +141,13 @@ class JSONBQuery:
             "created_by": record.created_by,
         }
 
-        # Merge JSONB data
+        # Merge JSONB data, translating column names to logical names
         if record.data:
-            result.update(record.data)
+            for column_name, value in record.data.items():
+                # Translate column name to logical name (handles renamed fields)
+                logical_name = self._column_to_name.get(column_name, column_name)
+                if logical_name in self._field_names:
+                    result[logical_name] = value
 
         # Add None for fields without values
         for field_name in self._field_names:
@@ -156,13 +163,20 @@ class JSONBQuery:
                 raise FieldNotFoundError(field, self._entity_name, sorted(self._field_names))
 
     def _serialize_record_data(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Serialize all field data for JSONB storage."""
+        """Serialize all field data for JSONB storage.
+
+        Uses column_name (storage key) instead of logical name for JSONB keys.
+        This supports field renaming where the logical name changes but the
+        storage key remains the same.
+        """
         jsonb_data = {}
         for field_name, value in data.items():
             if field_name in self._system_columns:
                 continue  # Skip system columns
             field = self._get_field(field_name)
-            jsonb_data[field_name] = self._serialize_value(value, field.field_type)
+            # Use column_name for storage (handles renamed fields)
+            column_name = self._name_to_column.get(field_name, field_name)
+            jsonb_data[column_name] = self._serialize_value(value, field.field_type)
         return jsonb_data
 
     def insert(
@@ -369,19 +383,20 @@ class JSONBQuery:
 
     def _get_jsonb_expression(self, field: FieldDefinition) -> Any:
         """Get PostgreSQL JSONB expression with proper type cast."""
-        field_name = field.name
+        # Use column_name (storage key) for JSONB access, not logical name
+        column_name = field.column_name
         field_type = field.field_type
 
         # Use ->> operator to extract as text, then cast to appropriate type
         if field_type == "int":
-            return cast(Record.data[field_name].astext, type_=JSONB).cast(type_=Integer)
+            return cast(Record.data[column_name].astext, type_=JSONB).cast(type_=Integer)
         elif field_type == "float":
-            return cast(Record.data[field_name].astext, type_=Numeric())
+            return cast(Record.data[column_name].astext, type_=Numeric())
         elif field_type == "bool":
-            return cast(Record.data[field_name].astext, type_=Boolean)
+            return cast(Record.data[column_name].astext, type_=Boolean)
         else:
             # String, text, datetime, uuid - extract as text
-            return Record.data[field_name].astext
+            return Record.data[column_name].astext
 
     def _apply_system_filter(self, query: Any, column: Any, op: str, value: Any) -> Any:
         """Apply a filter operator to a system column."""
@@ -410,14 +425,16 @@ class JSONBQuery:
         """Apply a filter operator to a JSONB field.
 
         Uses PostgreSQL JSONB operators for efficient querying.
+        Uses column_name (storage key) for JSONB access to support renamed fields.
         """
-        field_name = field.name
+        # Use column_name for storage access, not logical name
+        column_name = field.column_name
         field_type = field.field_type
 
         # Check existence first (unless is_null operator)
         if op != "is_null":
             # Use ? operator to check key exists
-            query = query.filter(Record.data.op("?")(field_name))
+            query = query.filter(Record.data.op("?")(column_name))
 
         # Serialize value
         serialized_value = self._serialize_value(value, field_type) if value is not None else None
@@ -425,10 +442,10 @@ class JSONBQuery:
         # Build filter based on operator
         if op == "eq":
             # Use @> containment for equality (fast with GIN index)
-            query = query.filter(Record.data.op("@>")(cast({field_name: serialized_value}, JSONB)))
+            query = query.filter(Record.data.op("@>")(cast({column_name: serialized_value}, JSONB)))
         elif op == "ne":
             # Not equal: use ->> to extract and compare
-            jsonb_field = Record.data[field_name].astext
+            jsonb_field = Record.data[column_name].astext
             if field_type == "int":
                 query = query.filter(cast(jsonb_field, Integer) != value)
             elif field_type == "float":
@@ -439,7 +456,7 @@ class JSONBQuery:
                 query = query.filter(jsonb_field != str(serialized_value))
         elif op in ("gt", "gte", "lt", "lte"):
             # Comparison operators: extract and cast
-            jsonb_field = Record.data[field_name].astext
+            jsonb_field = Record.data[column_name].astext
             if field_type == "int":
                 casted = cast(jsonb_field, Integer)
             elif field_type == "float":
@@ -457,7 +474,7 @@ class JSONBQuery:
                 query = query.filter(casted <= value)
         elif op == "like" or op == "ilike":
             # String pattern matching
-            jsonb_field = Record.data[field_name].astext
+            jsonb_field = Record.data[column_name].astext
             if op == "like":
                 query = query.filter(jsonb_field.like(f"%{value}%"))
             else:
@@ -467,7 +484,7 @@ class JSONBQuery:
             # Serialize each value in the array
             serialized_values = [self._serialize_value(v, field_type) for v in value]
             # Use ->> to extract and check if in array
-            jsonb_field = Record.data[field_name].astext
+            jsonb_field = Record.data[column_name].astext
             if field_type == "int":
                 casted = cast(jsonb_field, Integer)
             elif field_type == "float":
@@ -480,12 +497,12 @@ class JSONBQuery:
             if value:
                 # Field should be null or missing
                 query = query.filter(
-                    ~Record.data.op("?")(field_name) | (Record.data[field_name].astext.is_(None))
+                    ~Record.data.op("?")(column_name) | (Record.data[column_name].astext.is_(None))
                 )
             else:
                 # Field should exist and not be null
                 query = query.filter(
-                    Record.data.op("?")(field_name) & (Record.data[field_name].astext.isnot(None))
+                    Record.data.op("?")(column_name) & (Record.data[column_name].astext.isnot(None))
                 )
         else:
             raise QueryError(f"Unknown operator '{op}'")
