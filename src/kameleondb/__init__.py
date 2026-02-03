@@ -63,6 +63,12 @@ from kameleondb.exceptions import (
     StorageModeError,
     ValidationError,
 )
+from kameleondb.query import (
+    QueryValidator,
+    SchemaContextBuilder,
+    ValidationResult,
+    get_schema_context,
+)
 from kameleondb.tools import ToolDefinition, ToolRegistry
 
 __version__ = "0.2.0-alpha"
@@ -90,6 +96,11 @@ __all__ = [
     # Tools
     "ToolDefinition",
     "ToolRegistry",
+    # LLM-Native Query Generation (ADR-002)
+    "SchemaContextBuilder",
+    "QueryValidator",
+    "ValidationResult",
+    "get_schema_context",
     # Exceptions
     "KameleonDBError",
     "EntityNotFoundError",

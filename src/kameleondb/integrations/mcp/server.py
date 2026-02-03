@@ -535,6 +535,107 @@ def kameleondb_list_relationships(
         return json.dumps({"error": str(e)})
 
 
+# === LLM-Native Query Generation Tools (ADR-002) ===
+
+
+@mcp.tool()
+def kameleondb_get_schema_context(
+    entities: list[str] | None = None,
+    include_examples: bool = True,
+    include_relationships: bool = True,
+) -> str:
+    """Get schema context for LLM SQL generation.
+
+    Returns rich schema context that can be used to generate correct SQL
+    queries against KameleonDB's JSONB-based storage. This is the primary
+    tool for agents that want to generate their own SQL.
+
+    The context includes:
+    - Entity definitions with fields and types
+    - JSONB access patterns for each field type
+    - Relationship information and join hints
+    - Example queries for common patterns (optional)
+
+    Use this tool BEFORE generating SQL to understand the schema structure.
+
+    Args:
+        entities: Optional list of entity names to include (None = all)
+        include_examples: Include example SQL queries (default: true)
+        include_relationships: Include relationship info (default: true)
+
+    Returns:
+        JSON with full schema context including:
+        - database: "postgresql"
+        - storage_info: JSONB storage patterns
+        - entities: Array of entity definitions with fields
+        - relationships: Array of relationship definitions
+        - jsonb_patterns: How to access different field types
+        - example_queries: Common query patterns
+        - guidelines: Best practices for query generation
+
+    Example workflow:
+        1. Call kameleondb_get_schema_context() to get schema
+        2. Generate SQL using the context
+        3. Call kameleondb_execute_sql() to run the query
+    """
+    try:
+        return json.dumps(
+            get_db().get_schema_context(
+                entities=entities,
+                include_examples=include_examples,
+                include_relationships=include_relationships,
+            ),
+            default=str,
+        )
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def kameleondb_execute_sql(
+    sql: str,
+    read_only: bool = True,
+) -> str:
+    """Execute a SQL query with validation.
+
+    The query is validated before execution:
+    - SELECT only (when read_only=true, the default)
+    - Table access verified against KameleonDB tables
+    - SQL injection patterns blocked
+
+    IMPORTANT: Use kameleondb_get_schema_context() first to understand
+    the table structure and JSONB access patterns!
+
+    Key points for writing SQL:
+    - All entity data is in kdb_records table
+    - Field values are in the 'data' JSONB column
+    - Use data->>'field' for text, (data->>'field')::type for casting
+    - Always filter by entity_id and is_deleted = false
+
+    Args:
+        sql: SQL query to execute
+        read_only: Only allow SELECT statements (default: true)
+
+    Returns:
+        JSON with query results:
+        - On success: Array of result rows as objects
+        - On error: {"error": "error message", "validation_error": "..."}
+
+    Example SQL for JSONB:
+        SELECT id, data->>'name' as name, (data->>'total')::numeric as total
+        FROM kdb_records
+        WHERE entity_id = '<uuid>'
+          AND data->>'status' = 'active'
+          AND is_deleted = false
+        LIMIT 50
+    """
+    try:
+        results = get_db().execute_sql(sql, read_only=read_only)
+        return json.dumps(results, default=str)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
 def create_server(database_url: str, echo: bool = False) -> FastMCP:
     """Create and configure the MCP server with a database connection.
 

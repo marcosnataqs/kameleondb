@@ -691,3 +691,111 @@ class KameleonDB:
             entity_name=entity_name,
             limit=limit,
         )
+
+    # === LLM-Native Query Generation (ADR-002) ===
+
+    def get_schema_context(
+        self,
+        entities: list[str] | None = None,
+        include_examples: bool = True,
+        include_relationships: bool = True,
+    ) -> dict[str, Any]:
+        """Get schema context for LLM SQL generation.
+
+        Returns rich schema context that LLMs can use to generate correct
+        SQL queries against KameleonDB's JSONB-based storage.
+
+        This is the primary interface for agents that want to generate
+        their own SQL queries. The context includes:
+        - Entity definitions with fields and types
+        - JSONB access patterns for each field type
+        - Relationship information and join hints
+        - Example queries for common patterns
+
+        Args:
+            entities: Optional list of entity names to include (None = all)
+            include_examples: Whether to include example queries (default True)
+            include_relationships: Whether to include relationship info (default True)
+
+        Returns:
+            Schema context dict suitable for LLM prompts
+
+        Example:
+            >>> context = db.get_schema_context(entities=["Customer", "Order"])
+            >>> # Use context in an LLM prompt to generate SQL
+            >>> prompt = f"Given this schema: {context}, write SQL to find..."
+        """
+        from kameleondb.query.context import SchemaContextBuilder
+
+        builder = SchemaContextBuilder(self)
+        return builder.build_context(
+            entities=entities,
+            include_examples=include_examples,
+            include_relationships=include_relationships,
+        )
+
+    def execute_sql(
+        self,
+        sql: str,
+        read_only: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Execute a validated SQL query.
+
+        The query is validated before execution:
+        - SELECT only (when read_only=True)
+        - Table access verified against KameleonDB tables
+        - SQL injection patterns blocked
+
+        Use get_schema_context() first to understand the table structure
+        and JSONB access patterns.
+
+        Args:
+            sql: SQL query to execute
+            read_only: If True, only SELECT statements allowed (default True)
+
+        Returns:
+            List of result rows as dicts
+
+        Raises:
+            QueryError: If validation fails or execution fails
+
+        Example:
+            >>> context = db.get_schema_context()
+            >>> # Generate SQL using LLM with context
+            >>> sql = '''
+            ...     SELECT id, data->>'name' as name
+            ...     FROM kdb_records
+            ...     WHERE entity_id = '...'
+            ...       AND is_deleted = false
+            ...     LIMIT 10
+            ... '''
+            >>> results = db.execute_sql(sql)
+        """
+        from sqlalchemy import text
+
+        from kameleondb.exceptions import QueryError
+        from kameleondb.query.validator import QueryValidator
+
+        # Validate the query
+        validator = QueryValidator(db=self)
+        result = validator.validate(sql, read_only=read_only)
+
+        if not result.valid:
+            raise QueryError(f"Query validation failed: {result.error}")
+
+        # Log warnings (but don't fail)
+        for _warning in result.warnings:
+            # TODO: Add proper logging
+            pass
+
+        # Execute the validated query
+        try:
+            with self._connection.engine.connect() as conn:
+                query_result = conn.execute(text(result.sql))
+                rows = query_result.fetchall()
+                columns = query_result.keys()
+
+                # Convert to list of dicts
+                return [dict(zip(columns, row, strict=True)) for row in rows]
+        except Exception as e:
+            raise QueryError(f"Query execution failed: {e}") from e
