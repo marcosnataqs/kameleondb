@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/kameleondb-logo.png" alt="KameleonDB Logo" width="400"/>
+  <img src="./assets/kameleondb-logo.png" alt="KameleonDB Logo" width="300"/>
 </p>
 
 # KameleonDB
