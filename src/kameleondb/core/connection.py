@@ -66,7 +66,12 @@ class DatabaseConnection:
         """Get or create the SQLAlchemy engine."""
         if self._engine is None:
             try:
-                self._engine = create_engine(self._url, echo=self._echo)
+                self._engine = create_engine(
+                    self._url,
+                    echo=self._echo,
+                    pool_pre_ping=True,  # Verify connections before use
+                    pool_recycle=3600,  # Recycle connections after 1 hour
+                )
                 # Validate dialect
                 if self._engine.dialect.name not in self.SUPPORTED_DIALECTS:
                     raise ConnectionError(

@@ -1,16 +1,26 @@
+<p align="center">
+  <img src="./assets/kameleondb-logo.png" alt="KameleonDB Logo" width="400"/>
+</p>
+
 # KameleonDB
 
-**Agent-Native Data Platform**
+**The First Database Built for Agents to Own, Not Just Query**
 
 [![PyPI version](https://badge.fury.io/py/kameleondb.svg)](https://badge.fury.io/py/kameleondb)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-KameleonDB is a meta-layer on top of PostgreSQL where schema is stored as data, not DDL. AI agents can create and modify entity schemas dynamically without migrations. All data is stored in PostgreSQL JSONB for semantic locality and better agent reasoning.
+Most databases let agents query data that humans structured. KameleonDB goes further: **agents own the entire data lifecycle**—from schema design to data ingestion to continuous evolution. You provide the goals and policies, agents build and manage the database.
 
-## Philosophy: Schema-on-Reason
+Built on PostgreSQL with schema-as-data and JSONB storage, agents can restructure information on the fly without migrations, DDL, or human intervention.
 
-Traditional databases use **schema-on-write** (define structure before inserting data) or **schema-on-read** (interpret structure when querying). KameleonDB introduces **schema-on-reason** — where AI agents continuously structure and restructure data as they understand it better.
+## Philosophy: Agents as Data Engineers
+
+In traditional databases, **humans are the data engineers**: they design schemas, write migrations, and structure data for agents to query.
+
+KameleonDB **makes agents the data engineers**. Agents don't just consume data—they design the schema, ingest records, evolve structure, and reshape information as they reason about it. Humans shift from data architects to policy makers, defining what agents can do, not how to structure every field.
+
+This is **schema-on-reason**: structure emerges from agent reasoning, not upfront human design. As agents learn more about the data, they adapt the schema to match their understanding.
 
 **Six First Principles:**
 
