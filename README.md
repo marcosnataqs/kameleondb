@@ -1,8 +1,10 @@
 <p align="center">
-  <img src="./assets/kameleondb-colorful-logo.png" alt="KameleonDB Logo" width="350"/>
+  <img src="./assets/kameleondb-logo.png" alt="KameleonDB Logo" width="350"/>
+  <p align="center">
   <a href="https://badge.fury.io/py/kameleondb"><img src="https://badge.fury.io/py/kameleondb.svg" alt="PyPI version"></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+  </p>
 </p>
 
 # KameleonDB
