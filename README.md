@@ -1,14 +1,13 @@
 <p align="center">
-  <img src="./assets/kameleondb-logo.png" alt="KameleonDB Logo" width="350"/>
+  <img src="./assets/kameleondb-colorful-logo.png" alt="KameleonDB Logo" width="350"/>
+  <a href="https://badge.fury.io/py/kameleondb"><img src="https://badge.fury.io/py/kameleondb.svg" alt="PyPI version"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
 
 # KameleonDB
 
 **The First Database Built for Agents to Own, Not Just Query**
-
-[![PyPI version](https://badge.fury.io/py/kameleondb.svg)](https://badge.fury.io/py/kameleondb)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 Most databases let agents query data that humans structured. KameleonDB goes further: **agents own the entire data lifecycle**—from schema design to data ingestion to continuous evolution. You provide the goals and policies, agents build and manage the database.
 
