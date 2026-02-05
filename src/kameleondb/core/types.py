@@ -209,3 +209,68 @@ class QueryResult(BaseModel):
     total_count: int
     limit: int | None = None
     offset: int | None = None
+
+
+# === Query Intelligence Types (ADR-002) ===
+
+
+class QueryMetrics(BaseModel):
+    """Metrics from a single query execution."""
+
+    execution_time_ms: float
+    row_count: int
+    entities_accessed: list[str] = Field(default_factory=list)
+    has_join: bool = False
+    query_type: str  # SELECT, INSERT, UPDATE, DELETE
+
+
+class MaterializationSuggestion(BaseModel):
+    """Actionable suggestion for an agent to materialize an entity."""
+
+    entity_name: str
+    reason: str  # Human-readable: "Query took 450ms (threshold: 100ms)"
+    evidence: dict[str, Any] = Field(default_factory=dict)  # Machine-readable details
+    action: str  # Copy-paste action: "db.materialize_entity('Contact')"
+    priority: Literal["high", "medium", "low"] = "medium"
+
+
+class QueryExecutionResult(BaseModel):
+    """Enhanced query result with metrics and suggestions."""
+
+    rows: list[dict[str, Any]]
+    metrics: QueryMetrics
+    suggestions: list[MaterializationSuggestion] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class MaterializationPolicy(BaseModel):
+    """Configuration for materialization suggestion thresholds."""
+
+    # Immediate triggers (per-query)
+    execution_time_threshold_ms: float = 100.0  # Suggest if query > 100ms
+    row_count_threshold: int = 1000  # Suggest if rows > 1000
+
+    # Historical triggers (aggregated)
+    join_frequency_threshold: int = 10  # Joins in last 24 hours
+    join_frequency_window_hours: int = 24
+    access_frequency_threshold: int = 50  # Queries in last hour
+    access_frequency_window_hours: int = 1
+
+    # Feature flags
+    enabled: bool = True  # Enable/disable metrics collection
+    store_sql_text: bool = False  # Store raw SQL (PII concern)
+    retention_days: int = 7  # Auto-cleanup old metrics
+
+
+class EntityStats(BaseModel):
+    """Aggregated statistics for an entity."""
+
+    entity_name: str
+    total_queries: int = 0
+    avg_execution_time_ms: float = 0.0
+    max_execution_time_ms: float = 0.0
+    total_rows_returned: int = 0
+    join_count_24h: int = 0
+    storage_mode: str = "shared"
+    record_count: int = 0
+    suggestion: str | None = None
