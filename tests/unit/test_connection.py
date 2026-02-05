@@ -55,7 +55,16 @@ class TestDatabaseConnection:
 
     def test_unsupported_dialect(self):
         """Unsupported dialect raises ConnectionError."""
-        conn = DatabaseConnection("sqlite:///:memory:")
+        # MySQL is not supported (only PostgreSQL and SQLite)
+        conn = DatabaseConnection("mysql://user:pass@localhost/db")
         with pytest.raises(ConnectionError) as exc_info:
             _ = conn.engine
-        assert "Unsupported database dialect: sqlite" in str(exc_info.value)
+        assert "Unsupported database dialect" in str(exc_info.value)
+
+    def test_sqlite_supported(self):
+        """SQLite is now a supported dialect."""
+        conn = DatabaseConnection("sqlite:///:memory:")
+        assert conn.engine is not None
+        assert conn.is_sqlite is True
+        assert conn.dialect == "sqlite"
+        conn.close()

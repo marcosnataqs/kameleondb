@@ -340,14 +340,10 @@ class JSONBQuery:
                     record = session.query(Record).filter(Record.id == record_id).first()
                     if record:
                         merged_data = {**(record.data or {}), **json_updates}
-                        session.execute(
-                            update(Record)
-                            .where(Record.id == record_id)
-                            .values(
-                                data=cast(merged_data, JSON),
-                                updated_at=now,
-                            )
-                        )
+                        # Use ORM to update - this handles JSON serialization properly
+                        record.data = merged_data
+                        record.updated_at = now
+                        session.add(record)
 
                 session.commit()
 
