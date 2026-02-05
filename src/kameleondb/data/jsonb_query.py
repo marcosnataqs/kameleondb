@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from sqlalchemy import JSON, cast, update
+from sqlalchemy import cast, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
