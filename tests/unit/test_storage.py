@@ -24,7 +24,7 @@ class TestDedicatedTableManager:
     def test_create_dedicated_table(self, memory_db: KameleonDB) -> None:
         """Test creating a dedicated table."""
         # Create entity in shared mode
-        entity = memory_db.create_entity(
+        memory_db.create_entity(
             "TestEntity",
             fields=[
                 {"name": "name", "type": "string", "required": True},

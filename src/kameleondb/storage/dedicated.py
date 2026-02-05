@@ -8,12 +8,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import contextlib
+import re
+
 from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
     Float,
-    ForeignKey,
     Index,
     Integer,
     MetaData,
@@ -23,14 +25,12 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Session
 
 from kameleondb.schema.models import (
     EntityDefinition,
     FieldDefinition,
     OnDeleteAction,
     RelationshipDefinition,
-    RelationshipType,
     StorageMode,
 )
 
@@ -84,14 +84,19 @@ class DedicatedTableManager:
     def generate_table_name(self, entity_name: str) -> str:
         """Generate dedicated table name for an entity.
 
+        Converts PascalCase/camelCase to snake_case.
+
         Args:
-            entity_name: The entity name (e.g., "Contact")
+            entity_name: The entity name (e.g., "CustomerOrder")
 
         Returns:
-            Table name (e.g., "kdb_contact")
+            Table name (e.g., "kdb_customer_order")
         """
-        # Lowercase, replace spaces with underscores
-        safe_name = entity_name.lower().replace(" ", "_").replace("-", "_")
+        # Convert PascalCase/camelCase to snake_case
+        # Insert underscore before uppercase letters (except at start)
+        snake_case = re.sub(r"(?<!^)(?=[A-Z])", "_", entity_name)
+        # Lowercase and replace spaces/dashes with underscores
+        safe_name = snake_case.lower().replace(" ", "_").replace("-", "_")
         return f"kdb_{safe_name}"
 
     def create_dedicated_table(
@@ -139,8 +144,9 @@ class DedicatedTableManager:
                 )
             )
 
-        # Create table definition
-        table = Table(table_name, self._metadata, *columns)
+        # Create table definition with a fresh metadata to avoid conflicts
+        metadata = MetaData()
+        table = Table(table_name, metadata, *columns)
 
         # Add indexes
         indexes = [
@@ -182,7 +188,11 @@ class DedicatedTableManager:
             table_name: The table name to drop
         """
         with self._engine.begin() as conn:
-            conn.execute(text(f'DROP TABLE IF EXISTS "{table_name}" CASCADE'))
+            if self._is_postgresql:
+                conn.execute(text(f'DROP TABLE IF EXISTS "{table_name}" CASCADE'))
+            else:
+                # SQLite doesn't support CASCADE
+                conn.execute(text(f'DROP TABLE IF EXISTS "{table_name}"'))
 
     def add_foreign_key(
         self,
@@ -229,12 +239,10 @@ class DedicatedTableManager:
                     )
             else:
                 # SQLite - try to add, ignore if exists
-                try:
+                with contextlib.suppress(Exception):
                     conn.execute(
                         text(f'ALTER TABLE "{source_table}" ADD COLUMN "{fk_column}" VARCHAR(36)')
                     )
-                except Exception:
-                    pass  # Column already exists
 
             # Add FK constraint (PostgreSQL only - SQLite doesn't support ALTER ADD CONSTRAINT)
             if self._is_postgresql:
