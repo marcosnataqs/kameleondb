@@ -6,7 +6,7 @@ All field data is stored in a single JSONB column on kdb_records.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -29,7 +29,7 @@ def generate_uuid() -> str:
 
 def utc_now() -> datetime:
     """Get current UTC timestamp."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class JSONBQuery:
