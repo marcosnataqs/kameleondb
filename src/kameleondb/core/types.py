@@ -6,7 +6,7 @@ All types are designed to be JSON-serializable for agent consumption.
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum, StrEnum
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
