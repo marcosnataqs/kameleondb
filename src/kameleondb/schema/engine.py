@@ -121,6 +121,40 @@ class SchemaEngine:
         )
         session.add(entry)
 
+    def _log_materialization(
+        self,
+        entity_name: str,
+        operation: str,
+        old_mode: str,
+        new_mode: str,
+        table_name: str | None,
+        records_migrated: int,
+        created_by: str | None = None,
+        reason: str | None = None,
+    ) -> None:
+        """Log a materialization/dematerialization change to the changelog."""
+        with self._get_session() as session:
+            entry = SchemaChangelog(
+                operation=operation,
+                entity_name=entity_name,
+                old_value=json.dumps(
+                    {
+                        "storage_mode": old_mode,
+                    }
+                ),
+                new_value=json.dumps(
+                    {
+                        "storage_mode": new_mode,
+                        "dedicated_table_name": table_name,
+                        "records_migrated": records_migrated,
+                    }
+                ),
+                created_by=created_by,
+                reason=reason,
+            )
+            session.add(entry)
+            session.commit()
+
     def list_entities(self) -> list[str]:
         """List all entity names.
 

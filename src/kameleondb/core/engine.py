@@ -587,6 +587,167 @@ class KameleonDB:
 
         return result
 
+    # === Hybrid Storage (ADR-001) ===
+
+    def materialize_entity(
+        self,
+        name: str,
+        batch_size: int = 1000,
+        on_progress: Any = None,
+        created_by: str | None = None,
+        reason: str | None = None,
+    ) -> dict[str, Any]:
+        """Migrate an entity from shared to dedicated storage.
+
+        Creates a dedicated table for the entity and migrates all data.
+        This enables:
+        - Foreign key constraints for relationships
+        - Optimized JOIN performance
+        - Database-enforced referential integrity
+
+        Args:
+            name: Entity name to materialize
+            batch_size: Number of records to migrate per batch (default 1000)
+            on_progress: Optional progress callback
+            created_by: Who/what is performing the migration
+            reason: Why the entity is being materialized
+
+        Returns:
+            Migration result dict with:
+            - success: bool
+            - records_migrated: int
+            - table_name: str (new dedicated table name)
+            - duration_seconds: float
+            - error: str (if failed)
+
+        Raises:
+            EntityNotFoundError: If entity doesn't exist
+
+        Example:
+            >>> result = db.materialize_entity("Customer", reason="Adding FK constraints")
+            >>> print(f"Migrated {result['records_migrated']} records to {result['table_name']}")
+        """
+        from kameleondb.storage.migration import StorageMigration
+
+        # Get entity and fields
+        entity = self._schema_engine.get_entity(name)
+        if not entity:
+            raise EntityNotFoundError(name, self._schema_engine.list_entities())
+
+        fields = self._schema_engine.get_fields(name)
+
+        # Perform migration
+        migration = StorageMigration(self._connection.engine)
+        result = migration.migrate_to_dedicated(
+            entity=entity,
+            fields=fields,
+            batch_size=batch_size,
+            on_progress=on_progress,
+        )
+
+        # Log to changelog if successful
+        if result.success:
+            self._schema_engine._log_materialization(
+                entity_name=name,
+                operation="materialize",
+                old_mode="shared",
+                new_mode="dedicated",
+                table_name=result.table_name,
+                records_migrated=result.records_migrated,
+                created_by=created_by,
+                reason=reason,
+            )
+
+        # Clear entity cache
+        if name in self._entities:
+            del self._entities[name]
+
+        return {
+            "success": result.success,
+            "entity_name": result.entity_name,
+            "records_migrated": result.records_migrated,
+            "table_name": result.table_name,
+            "duration_seconds": result.duration_seconds,
+            "error": result.error,
+        }
+
+    def dematerialize_entity(
+        self,
+        name: str,
+        batch_size: int = 1000,
+        on_progress: Any = None,
+        created_by: str | None = None,
+        reason: str | None = None,
+    ) -> dict[str, Any]:
+        """Migrate an entity from dedicated back to shared storage.
+
+        Moves all data back to the shared kdb_records table and drops
+        the dedicated table.
+
+        Args:
+            name: Entity name to dematerialize
+            batch_size: Number of records to migrate per batch (default 1000)
+            on_progress: Optional progress callback
+            created_by: Who/what is performing the migration
+            reason: Why the entity is being dematerialized
+
+        Returns:
+            Migration result dict with:
+            - success: bool
+            - records_migrated: int
+            - duration_seconds: float
+            - error: str (if failed)
+
+        Raises:
+            EntityNotFoundError: If entity doesn't exist
+
+        Example:
+            >>> result = db.dematerialize_entity("Customer", reason="Removing FK constraints")
+            >>> print(f"Migrated {result['records_migrated']} records back to shared storage")
+        """
+        from kameleondb.storage.migration import StorageMigration
+
+        # Get entity and fields
+        entity = self._schema_engine.get_entity(name)
+        if not entity:
+            raise EntityNotFoundError(name, self._schema_engine.list_entities())
+
+        fields = self._schema_engine.get_fields(name)
+
+        # Perform migration
+        migration = StorageMigration(self._connection.engine)
+        result = migration.migrate_to_shared(
+            entity=entity,
+            fields=fields,
+            batch_size=batch_size,
+            on_progress=on_progress,
+        )
+
+        # Log to changelog if successful
+        if result.success:
+            self._schema_engine._log_materialization(
+                entity_name=name,
+                operation="dematerialize",
+                old_mode="dedicated",
+                new_mode="shared",
+                table_name=None,
+                records_migrated=result.records_migrated,
+                created_by=created_by,
+                reason=reason,
+            )
+
+        # Clear entity cache
+        if name in self._entities:
+            del self._entities[name]
+
+        return {
+            "success": result.success,
+            "entity_name": result.entity_name,
+            "records_migrated": result.records_migrated,
+            "duration_seconds": result.duration_seconds,
+            "error": result.error,
+        }
+
     # === Tool Export (for agent frameworks) ===
 
     @property
