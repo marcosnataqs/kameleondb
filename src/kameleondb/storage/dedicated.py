@@ -37,15 +37,16 @@ if TYPE_CHECKING:
 
 
 # Mapping from KameleonDB field types to SQLAlchemy column types
-FIELD_TYPE_MAP = {
-    "string": lambda: String(255),
-    "text": lambda: Text(),
-    "int": lambda: Integer(),
-    "float": lambda: Float(),
-    "bool": lambda: Boolean(),
-    "datetime": lambda: DateTime(timezone=True),
-    "uuid": lambda: String(36),
-    "json": lambda: JSONB(),
+# Using Any to avoid complex generic type annotations
+FIELD_TYPE_MAP: dict[str, Any] = {
+    "string": String,
+    "text": Text,
+    "int": Integer,
+    "float": Float,
+    "bool": Boolean,
+    "datetime": DateTime,
+    "uuid": String,
+    "json": JSONB,
 }
 
 
@@ -140,7 +141,14 @@ class DedicatedTableManager:
             if not field.is_active:
                 continue
 
-            col_type = FIELD_TYPE_MAP.get(field.field_type, lambda: String(255))()
+            type_class = FIELD_TYPE_MAP.get(field.field_type, String)
+            # Handle types that need special parameters
+            if type_class is String:
+                col_type: Any = String(255)
+            elif type_class is DateTime:
+                col_type = DateTime(timezone=True)
+            else:
+                col_type = type_class()
             columns.append(
                 Column(
                     field.column_name,
