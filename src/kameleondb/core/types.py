@@ -6,13 +6,13 @@ All types are designed to be JSON-serializable for agent consumption.
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 
-class FieldType(str, Enum):
+class FieldType(StrEnum):
     """Supported field types in KameleonDB."""
 
     STRING = "string"
@@ -30,7 +30,7 @@ class FieldType(str, Enum):
         return [t.value for t in cls]
 
 
-class StorageModeType(str, Enum):
+class StorageModeType(StrEnum):
     """Storage modes for entities (ADR-001: Hybrid Storage)."""
 
     SHARED = "shared"  # All records in kdb_records table (default, maximum flexibility)
@@ -42,7 +42,7 @@ class StorageModeType(str, Enum):
         return [m.value for m in cls]
 
 
-class RelationshipTypeEnum(str, Enum):
+class RelationshipTypeEnum(StrEnum):
     """Relationship types between entities."""
 
     MANY_TO_ONE = "many_to_one"  # e.g., Order -> Customer
@@ -56,7 +56,7 @@ class RelationshipTypeEnum(str, Enum):
         return [t.value for t in cls]
 
 
-class OnDeleteActionType(str, Enum):
+class OnDeleteActionType(StrEnum):
     """Referential actions when a related record is deleted."""
 
     CASCADE = "CASCADE"  # Delete related records

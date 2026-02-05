@@ -11,14 +11,14 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from kameleondb import KameleonDB
 
 
-class QueryType(str, Enum):
+class QueryType(StrEnum):
     """Types of SQL queries."""
 
     SELECT = "SELECT"
