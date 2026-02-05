@@ -48,14 +48,25 @@ See [AGENTS.md](AGENTS.md) for complete details.
 ## Installation
 
 ```bash
-# Basic installation
+# Core only (SQLite works out of the box)
 pip install kameleondb
 
+# With PostgreSQL support
+pip install kameleondb[postgresql]
+
+# With MCP server
+pip install kameleondb[mcp]
+
 # For development
-pip install kameleondb[dev]
+pip install kameleondb[dev,postgresql]
+
+# Everything
+pip install kameleondb[all]
 ```
 
-**Requirements**: PostgreSQL 12+ (JSONB) or SQLite 3.9+ (JSON1)
+**Database Requirements**:
+- **SQLite**: 3.9+ with JSON1 extension (included in Python stdlib)
+- **PostgreSQL**: 12+ with JSONB support
 
 ## Quick Start
 
