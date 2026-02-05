@@ -36,27 +36,57 @@ def _normalize_postgresql_url(url: str) -> str:
     return url
 
 
-class DatabaseConnection:
-    """Manages PostgreSQL database connections.
+def _normalize_sqlite_url(url: str) -> str:
+    """Normalize SQLite URL.
 
-    Supports PostgreSQL databases only (with JSONB).
-    Uses psycopg3 as the database driver.
+    Supports:
+    - sqlite:///path/to/db.sqlite
+    - sqlite:///:memory:
+    - sqlite+aiosqlite:///... (for async)
+
+    Args:
+        url: Database URL
+
+    Returns:
+        Normalized URL
+    """
+    # Already has a driver specified
+    if "sqlite+" in url:
+        return url
+
+    return url
+
+
+class DatabaseConnection:
+    """Manages database connections for KameleonDB.
+
+    Supports PostgreSQL (with JSONB) and SQLite (with JSON1) databases.
     """
 
-    SUPPORTED_DIALECTS = ("postgresql",)
+    SUPPORTED_DIALECTS = ("postgresql", "sqlite")
 
     def __init__(self, url: str | URL, echo: bool = False) -> None:
-        """Initialize PostgreSQL database connection.
+        """Initialize database connection.
 
         Args:
-            url: PostgreSQL connection URL (e.g., "postgresql://user:pass@localhost/db")
-                 Automatically uses psycopg3 driver.
+            url: Database connection URL
+                 PostgreSQL: "postgresql://user:pass@localhost/db"
+                 SQLite: "sqlite:///path/to/db.sqlite" or "sqlite:///:memory:"
             echo: Whether to echo SQL statements (for debugging)
 
         Raises:
-            ConnectionError: If connection fails or dialect is not PostgreSQL
+            ConnectionError: If connection fails or dialect is not supported
         """
-        self._url = _normalize_postgresql_url(str(url))
+        url_str = str(url)
+
+        # Normalize URL based on dialect
+        if url_str.startswith("postgresql"):
+            self._url = _normalize_postgresql_url(url_str)
+        elif url_str.startswith("sqlite"):
+            self._url = _normalize_sqlite_url(url_str)
+        else:
+            self._url = url_str
+
         self._echo = echo
         self._engine: Engine | None = None
         self._session_factory: sessionmaker[Session] | None = None
@@ -66,12 +96,26 @@ class DatabaseConnection:
         """Get or create the SQLAlchemy engine."""
         if self._engine is None:
             try:
+                # SQLite-specific settings
+                connect_args = {}
+                if self._url.startswith("sqlite"):
+                    # Enable foreign keys for SQLite
+                    connect_args["check_same_thread"] = False
+
                 self._engine = create_engine(
                     self._url,
                     echo=self._echo,
                     pool_pre_ping=True,  # Verify connections before use
-                    pool_recycle=3600,  # Recycle connections after 1 hour
+                    connect_args=connect_args,
                 )
+
+                # Execute SQLite-specific pragmas
+                if self._engine.dialect.name == "sqlite":
+                    with self._engine.connect() as conn:
+                        conn.execute(text("PRAGMA foreign_keys = ON"))
+                        conn.execute(text("PRAGMA journal_mode = WAL"))
+                        conn.commit()
+
                 # Validate dialect
                 if self._engine.dialect.name not in self.SUPPORTED_DIALECTS:
                     raise ConnectionError(
@@ -85,10 +129,10 @@ class DatabaseConnection:
         return self._engine
 
     @property
-    def dialect(self) -> Literal["postgresql"]:
+    def dialect(self) -> Literal["postgresql", "sqlite"]:
         """Get the database dialect name."""
         name = self.engine.dialect.name
-        if name != "postgresql":
+        if name not in self.SUPPORTED_DIALECTS:
             raise ConnectionError(f"Unsupported dialect: {name}")
         return name  # type: ignore[return-value]
 
@@ -96,6 +140,11 @@ class DatabaseConnection:
     def is_postgresql(self) -> bool:
         """Check if connected to PostgreSQL."""
         return self.dialect == "postgresql"
+
+    @property
+    def is_sqlite(self) -> bool:
+        """Check if connected to SQLite."""
+        return self.dialect == "sqlite"
 
     @property
     def session_factory(self) -> sessionmaker[Session]:

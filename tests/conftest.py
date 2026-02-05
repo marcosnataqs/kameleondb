@@ -35,24 +35,30 @@ def db(postgresql_url: str) -> Generator[KameleonDB, None, None]:
 
 
 @pytest.fixture
-def memory_db(postgresql_url: str) -> Generator[KameleonDB, None, None]:
-    """Create a KameleonDB instance (alias for db fixture for backward compatibility)."""
-    database = KameleonDB(postgresql_url)
-    yield database
-    # Cleanup - drop all kdb_ tables
-    from sqlalchemy import text
+def memory_db() -> Generator[KameleonDB, None, None]:
+    """Create a KameleonDB instance with SQLite in-memory.
 
-    with database._connection.engine.connect() as conn:
-        result = conn.execute(text("SELECT tablename FROM pg_tables WHERE tablename LIKE 'kdb_%'"))
-        for row in result:
-            conn.execute(text(f'DROP TABLE IF EXISTS "{row[0]}" CASCADE'))
-        conn.commit()
+    This is faster for unit tests that don't need PostgreSQL-specific features.
+    """
+    database = KameleonDB("sqlite:///:memory:")
+    yield database
+    database.close()
+
+
+@pytest.fixture
+def sqlite_db() -> Generator[KameleonDB, None, None]:
+    """Create a KameleonDB instance with SQLite in-memory."""
+    database = KameleonDB("sqlite:///:memory:")
+    yield database
     database.close()
 
 
 @pytest.fixture
 def pg_db(postgresql_url: str) -> Generator[KameleonDB, None, None]:
-    """Create a KameleonDB instance with PostgreSQL (alias for db)."""
+    """Create a KameleonDB instance with PostgreSQL.
+
+    Use this for integration tests that need PostgreSQL-specific features.
+    """
     database = KameleonDB(postgresql_url)
     yield database
     # Cleanup - drop all kdb_ tables
