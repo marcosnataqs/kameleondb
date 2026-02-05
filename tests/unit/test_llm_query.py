@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from kameleondb.query.context import EXAMPLE_QUERIES, JSONB_ACCESS_PATTERNS
+from kameleondb.query.context import (
+    POSTGRESQL_ACCESS_PATTERNS,
+    POSTGRESQL_EXAMPLE_QUERIES,
+    SQLITE_ACCESS_PATTERNS,
+    SQLITE_EXAMPLE_QUERIES,
+)
 from kameleondb.query.validator import (
     ALLOWED_TABLES,
     QueryType,
@@ -223,16 +228,29 @@ class TestSchemaContextConstants:
 
     def test_jsonb_patterns_exist(self) -> None:
         """Test that JSONB access patterns are defined."""
-        assert "text_field" in JSONB_ACCESS_PATTERNS
-        assert "numeric_field" in JSONB_ACCESS_PATTERNS
-        assert "boolean_field" in JSONB_ACCESS_PATTERNS
-        assert "datetime_field" in JSONB_ACCESS_PATTERNS
+        # PostgreSQL patterns
+        assert "text_field" in POSTGRESQL_ACCESS_PATTERNS
+        assert "numeric_field" in POSTGRESQL_ACCESS_PATTERNS
+        assert "boolean_field" in POSTGRESQL_ACCESS_PATTERNS
+        assert "datetime_field" in POSTGRESQL_ACCESS_PATTERNS
+        # SQLite patterns
+        assert "text_field" in SQLITE_ACCESS_PATTERNS
+        assert "numeric_field" in SQLITE_ACCESS_PATTERNS
+        assert "boolean_field" in SQLITE_ACCESS_PATTERNS
+        assert "datetime_field" in SQLITE_ACCESS_PATTERNS
 
     def test_example_queries_exist(self) -> None:
-        """Test that example queries are defined."""
-        assert len(EXAMPLE_QUERIES) > 0
+        """Test that example queries are defined for both dialects."""
+        # PostgreSQL examples
+        assert len(POSTGRESQL_EXAMPLE_QUERIES) > 0
+        for example in POSTGRESQL_EXAMPLE_QUERIES:
+            assert "description" in example
+            assert "sql" in example
+            assert len(example["sql"]) > 0
 
-        for example in EXAMPLE_QUERIES:
+        # SQLite examples
+        assert len(SQLITE_EXAMPLE_QUERIES) > 0
+        for example in SQLITE_EXAMPLE_QUERIES:
             assert "description" in example
             assert "sql" in example
             assert len(example["sql"]) > 0
