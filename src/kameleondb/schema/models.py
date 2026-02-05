@@ -13,9 +13,13 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+# Dialect-aware JSON type: JSONB on PostgreSQL, JSON on SQLite
+# This allows the same models to work with both databases
+JSONType = JSONB().with_variant(JSON(), "sqlite")
 
 
 def generate_uuid() -> str:
@@ -360,8 +364,8 @@ class Record(Base):
         String(36), ForeignKey("kdb_entity_definitions.id", ondelete="CASCADE"), nullable=False
     )
 
-    # PostgreSQL native JSONB column stores all field values
-    data: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
+    # JSON column stores all field values (JSONB on PostgreSQL, JSON on SQLite)
+    data: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(
