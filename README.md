@@ -2,7 +2,7 @@
   <img src="./assets/kameleondb-logo.png" alt="KameleonDB Logo" width="350"/>
   <p align="center">
   <a href="https://badge.fury.io/py/kameleondb"><img src="https://badge.fury.io/py/kameleondb.svg" alt="PyPI version"></a>
-  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+"></a>
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
   </p>
 </p>
@@ -13,7 +13,7 @@
 
 Most databases let agents query data that humans structured. KameleonDB goes further: **agents own the entire data lifecycle**—from schema design to data ingestion to continuous evolution. You provide the goals and policies, agents build and manage the database.
 
-Built on PostgreSQL with schema-as-data and JSONB storage, agents can restructure information on the fly without migrations, DDL, or human intervention.
+Built on PostgreSQL (JSONB) or SQLite (JSON1) with schema-as-data storage, agents can restructure information on the fly without migrations, DDL, or human intervention.
 
 ## Philosophy: Agents as Data Engineers
 
@@ -37,7 +37,7 @@ See [AGENTS.md](AGENTS.md) for complete details.
 ## Features
 
 - **Dynamic Schema**: Create and modify entity fields at runtime without migrations
-- **PostgreSQL JSONB**: All data stored in native JSONB for semantic locality
+- **Multi-Database**: PostgreSQL (JSONB) and SQLite (JSON1) support
 - **Agent-First Design**: Every operation is a tool for AI agents with JSON-serializable I/O
 - **Self-Describing**: Agents can discover schema before querying
 - **Idempotent Operations**: Safe for agents to call repeatedly
@@ -54,7 +54,7 @@ pip install kameleondb
 pip install kameleondb[dev]
 ```
 
-**Requirements**: PostgreSQL 12+ with JSONB support
+**Requirements**: PostgreSQL 12+ (JSONB) or SQLite 3.9+ (JSON1)
 
 ## Quick Start
 
@@ -63,6 +63,9 @@ from kameleondb import KameleonDB
 
 # Initialize with PostgreSQL
 db = KameleonDB("postgresql://user:pass@localhost/kameleondb")
+
+# Or use SQLite for development/testing
+# db = KameleonDB("sqlite:///./kameleondb.db")
 
 # Create an entity with fields
 contacts = db.create_entity(
@@ -139,10 +142,10 @@ tools = db.get_tools()
 
 ## Architecture
 
-KameleonDB uses a **Metadata-driven + JSONB Storage** approach:
+KameleonDB uses a **Metadata-driven + JSON Storage** approach:
 
 1. **Meta-tables** store schema definitions as data
-2. **Single data table** (`kdb_records`) with PostgreSQL JSONB column stores all records
+2. **Single data table** (`kdb_records`) with JSON column stores all records
 3. **No DDL for schema changes** - just metadata updates
 
 ```
@@ -150,42 +153,46 @@ kdb_entity_definitions  - Entity types (Contact, Deal, Company)
 kdb_field_definitions   - Fields for each entity
 kdb_schema_changelog    - Audit trail of schema changes
 
-kdb_records            - All data in JSONB column (one row per record)
+kdb_records            - All data in JSON column (one row per record)
   ├─ id, entity_id, created_at, updated_at (system columns)
-  └─ data JSONB        - All field values in single JSON document
+  └─ data JSON         - All field values in single JSON document
 ```
 
-**Why JSONB?**
+**Why JSON storage?**
 - **Semantic locality**: All record attributes in one row (better for agent reasoning)
-- **Simple queries**: `data->>'name' = 'John'` instead of complex joins
-- **GIN indexes**: Fast queries on JSONB paths
+- **Simple queries**: PostgreSQL `data->>'name'` or SQLite `json_extract(data, '$.name')`
+- **Indexing**: GIN indexes (PostgreSQL) for fast JSON queries
 - **Zero-lock evolution**: Adding fields is just metadata, no DDL
 
 ## Supported Field Types
 
-All types are stored in PostgreSQL JSONB and cast when querying:
+All types are stored in JSON and cast when querying:
 
-| Type | Storage in JSONB | Query Example |
-|------|------------------|---------------|
-| string | text | `data->>'field'` |
-| text | text | `data->>'field'` |
-| int | number | `(data->>'field')::int` |
-| float | number | `(data->>'field')::numeric` |
-| bool | boolean | `(data->>'field')::boolean` |
-| datetime | text (ISO) | `(data->>'field')::timestamptz` |
-| json | nested JSONB | `data->'field'` |
-| uuid | text | `(data->>'field')::uuid` |
+| Type | PostgreSQL Query | SQLite Query |
+|------|------------------|--------------|
+| string | `data->>'field'` | `json_extract(data, '$.field')` |
+| text | `data->>'field'` | `json_extract(data, '$.field')` |
+| int | `(data->>'field')::int` | `CAST(json_extract(data, '$.field') AS INTEGER)` |
+| float | `(data->>'field')::numeric` | `CAST(json_extract(data, '$.field') AS REAL)` |
+| bool | `(data->>'field')::boolean` | `json_extract(data, '$.field')` |
+| datetime | `(data->>'field')::timestamptz` | `json_extract(data, '$.field')` |
+| json | `data->'field'` | `json_extract(data, '$.field')` |
+| uuid | `(data->>'field')::uuid` | `json_extract(data, '$.field')` |
 
-**PostgreSQL JSONB Operators**:
+**PostgreSQL Operators**:
 - `data->>'field'` - Extract as text
 - `data @> '{"field": "value"}'` - Containment (uses GIN index)
 - `data ? 'field'` - Check if key exists
+
+**SQLite Functions**:
+- `json_extract(data, '$.field')` - Extract field value
+- `json_type(data, '$.field')` - Get JSON type
 
 ## Development
 
 ```bash
 # Clone the repository
-git clone https://github.com/kameleondb/kameleondb.git
+git clone https://github.com/marcosnataqs/kameleondb.git
 cd kameleondb
 
 # Install with dev dependencies
@@ -205,10 +212,21 @@ pre-commit run --all-files
 
 ## Roadmap
 
-- **v0.1**: Core schema engine (current)
-- **v0.2**: Agent framework integrations (LangChain, Claude, OpenAI)
-- **v0.3**: Vector search integration
-- **v0.4**: LLM-based structured extraction
+- **v0.1**: Core schema engine ✅
+- **v0.2**: Relationships + LLM query support ✅
+  - Relationship metadata (many-to-one, one-to-many, many-to-many)
+  - Schema context for SQL generation
+  - Query validation and execution
+  - SQLite support
+- **v0.3**: Dedicated storage + relational queries (planned)
+  - Per-entity tables with FK constraints
+  - Cross-entity queries with JOINs
+  - Cascading operations
+- **v0.4**: Natural language queries (planned)
+  - LLM-powered query generation
+  - Query caching and optimization
+
+See [docs/tasks/BACKLOG.md](docs/tasks/BACKLOG.md) for detailed roadmap.
 
 ## License
 

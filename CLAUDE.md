@@ -2,6 +2,25 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project Documentation
+
+```
+docs/
+├── tasks/
+│   ├── BACKLOG.md    # Future work and ideas
+│   ├── CURRENT.md    # Active tasks (check this first!)
+│   └── DONE.md       # Completed work log
+├── specs/            # Feature specifications
+│   └── 001-hybrid-storage.md
+└── notes/            # Research and scratchpad
+```
+
+**Workflow:**
+1. Check `docs/tasks/CURRENT.md` at session start
+2. Move tasks from `BACKLOG.md` → `CURRENT.md` when starting work
+3. Move completed tasks to `DONE.md` with date
+4. Create specs in `docs/specs/` before building complex features
+
 ## First Principles
 
 KameleonDB follows six core principles (see [AGENTS.md](AGENTS.md) for full details):
@@ -44,13 +63,17 @@ mypy src/kameleondb --ignore-missing-imports
 
 ## Architecture
 
-KameleonDB is an Agent-Native Data Platform with JSONB-first storage. It provides a meta-layer on top of PostgreSQL where schema is stored as data, not DDL, and all record data is stored in native JSONB columns for semantic locality.
+KameleonDB is an Agent-Native Data Platform with JSON-first storage. It provides a meta-layer on top of PostgreSQL or SQLite where schema is stored as data, not DDL, and all record data is stored in JSON columns for semantic locality.
 
-### Core Pattern: Metadata-driven + JSONB Storage
+**Supported Databases:**
+- PostgreSQL 12+ (JSONB with GIN indexes)
+- SQLite 3.9+ (JSON1 extension)
+
+### Core Pattern: Metadata-driven + JSON Storage
 
 The system uses two layers of tables:
 1. **Meta-tables** (`kdb_entity_definitions`, `kdb_field_definitions`, `kdb_schema_changelog`) - Store schema definitions as data
-2. **Data table** (`kdb_records`) - Single table with PostgreSQL JSONB column storing all field values
+2. **Data table** (`kdb_records`) - Single table with JSON column storing all field values
 
 ### Key Components
 
@@ -71,9 +94,10 @@ The system uses two layers of tables:
    - No DDL required - new records can include `phone` in JSONB data
    - Old records show `phone=None` when queried
 
-3. Agent calls `entity.find(filters={"name": "John"})`:
-   - `JSONBQuery` builds PostgreSQL JSONB queries: `WHERE data->>'name' = 'John'`
-   - Uses GIN indexes for efficient JSONB queries
+3. Agent generates SQL via `db.get_schema_context()` and `db.execute_sql()`:
+   - `SchemaContextBuilder` provides schema info for LLM SQL generation
+   - `QueryValidator` validates SQL before execution (injection protection)
+   - Uses JSONB queries: `WHERE data->>'name' = 'John'`
 
 ### Agent-First Design
 
@@ -83,24 +107,18 @@ All public methods:
 - Support `if_not_exists` for idempotency
 - Include actionable error messages with available options
 
-### Type Mapping (PostgreSQL JSONB)
+### Type Mapping
 
-All field values are stored in a PostgreSQL JSONB column and cast when querying:
+All field values are stored in JSON and cast when querying:
 
-| KameleonDB Type | Storage in JSONB | Query Cast Example |
-|-----------------|------------------|-------------------|
-| string | text | `data->>'field'` |
-| text | text | `data->>'field'` |
-| int | number | `(data->>'field')::int` |
-| float | number | `(data->>'field')::numeric` |
-| bool | boolean | `(data->>'field')::boolean` |
-| datetime | text (ISO) | `(data->>'field')::timestamptz` |
-| json | nested JSONB | `data->'field'` |
-| uuid | text | `(data->>'field')::uuid` |
+| Type | PostgreSQL | SQLite |
+|------|------------|--------|
+| string | `data->>'field'` | `json_extract(data, '$.field')` |
+| int | `(data->>'field')::int` | `CAST(json_extract(...) AS INTEGER)` |
+| float | `(data->>'field')::numeric` | `CAST(json_extract(...) AS REAL)` |
+| bool | `(data->>'field')::boolean` | `json_extract(data, '$.field')` |
+| datetime | `(data->>'field')::timestamptz` | `json_extract(data, '$.field')` |
+| json | `data->'field'` | `json_extract(data, '$.field')` |
 
-**PostgreSQL Operators**:
-- `data->>'field'` - Extract field as text
-- `data->'field'` - Extract field as JSONB
-- `data @> '{"field": "value"}'` - Containment (uses GIN index)
-- `data ? 'field'` - Check if key exists
-- `(data->>'field')::type` - Type cast for comparisons
+**PostgreSQL Operators**: `data->>'field'`, `data @> '{...}'`, `data ? 'field'`
+**SQLite Functions**: `json_extract(data, '$.field')`, `json_type(data, '$.field')`

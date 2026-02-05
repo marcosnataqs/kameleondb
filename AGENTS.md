@@ -2,6 +2,12 @@
 
 This file provides guidance to AI agents working with code in this repository.
 
+## Project Documentation
+
+- **[docs/tasks/](docs/tasks/)** - Task tracking (BACKLOG, CURRENT, DONE)
+- **[docs/specs/](docs/specs/)** - Feature specifications before implementation
+- **[docs/notes/](docs/notes/)** - Research and exploration notes
+
 ## First Principles
 
 KameleonDB is built on six foundational principles that guide all architectural decisions:
@@ -106,13 +112,17 @@ mypy src/kameleondb --ignore-missing-imports
 
 ## Architecture
 
-KameleonDB is an Agent-Native Data Platform with JSONB-first storage. It provides a meta-layer on top of PostgreSQL where schema is stored as data, not DDL, and all record data is stored in native JSONB columns for semantic locality.
+KameleonDB is an Agent-Native Data Platform with JSON-first storage. It provides a meta-layer on top of PostgreSQL or SQLite where schema is stored as data, not DDL, and all record data is stored in JSON columns for semantic locality.
 
-### Core Pattern: Metadata-driven + JSONB Storage
+**Supported Databases:**
+- PostgreSQL 12+ (JSONB with GIN indexes)
+- SQLite 3.9+ (JSON1 extension)
+
+### Core Pattern: Metadata-driven + JSON Storage
 
 The system uses two layers of tables:
 1. **Meta-tables** (`kdb_entity_definitions`, `kdb_field_definitions`, `kdb_schema_changelog`) - Store schema definitions as data
-2. **Data table** (`kdb_records`) - Single table with PostgreSQL JSONB column storing all field values
+2. **Data table** (`kdb_records`) - Single table with JSON column storing all field values
 
 ### Key Components
 
@@ -133,9 +143,10 @@ The system uses two layers of tables:
    - No DDL required - new records can include `phone` in JSONB data
    - Old records show `phone=None` when queried
 
-3. Agent calls `entity.find(filters={"name": "John"})`:
-   - `JSONBQuery` builds PostgreSQL JSONB queries: `WHERE data->>'name' = 'John'`
-   - Uses GIN indexes for efficient JSONB queries
+3. Agent generates SQL via `db.get_schema_context()` and `db.execute_sql()`:
+   - `SchemaContextBuilder` provides schema info for LLM SQL generation
+   - `QueryValidator` validates SQL before execution (injection protection)
+   - Uses JSONB queries: `WHERE data->>'name' = 'John'`
 
 ### Agent-First Design
 
@@ -145,17 +156,32 @@ All public methods:
 - Support `if_not_exists` for idempotency
 - Include actionable error messages with available options
 
-### Type Mapping (PostgreSQL JSONB)
+### Type Mapping
 
-All field values are stored in a PostgreSQL JSONB column and cast when querying:
+All field values are stored in JSON and cast when querying:
 
-| KameleonDB Type | Storage in JSONB | Query Cast Example |
-|-----------------|------------------|-------------------|
-| string | text | `data->>'field'` |
-| text | text | `data->>'field'` |
-| int | number | `(data->>'field')::int` |
-| float | number | `(data->>'field')::numeric` |
-| bool | boolean | `(data->>'field')::boolean` |
-| datetime | TEXT | TIMESTAMP |
-| json | TEXT | JSONB |
-| uuid | TEXT | UUID |
+| Type | PostgreSQL | SQLite |
+|------|------------|--------|
+| string | `data->>'field'` | `json_extract(data, '$.field')` |
+| int | `(data->>'field')::int` | `CAST(json_extract(...) AS INTEGER)` |
+| float | `(data->>'field')::numeric` | `CAST(json_extract(...) AS REAL)` |
+| bool | `(data->>'field')::boolean` | `json_extract(data, '$.field')` |
+| datetime | `(data->>'field')::timestamptz` | `json_extract(data, '$.field')` |
+| json | `data->'field'` | `json_extract(data, '$.field')` |
+
+**PostgreSQL Operators**: `data->>'field'`, `data @> '{...}'`, `data ? 'field'`
+**SQLite Functions**: `json_extract(data, '$.field')`, `json_type(data, '$.field')`
+
+## Query Generation
+
+For complex queries, agents should use the schema context API:
+
+```python
+# Get schema context for SQL generation
+context = db.get_schema_context(entities=["Customer", "Order"])
+
+# Execute validated SQL
+results = db.execute_sql("SELECT ... FROM kdb_records WHERE ...", read_only=True)
+```
+
+See `query/context.py` and `query/validator.py` for implementation details.

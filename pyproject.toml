@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "kameleondb"
 version = "0.1.0"
-description = "Agent-Native Data Platform with Dynamic Schema Engine"
+description = "The First Database Built for Agents to Own, Not Just Query"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
@@ -63,10 +63,10 @@ all = [
 kameleondb-mcp = "kameleondb.integrations.mcp.server:main"
 
 [project.urls]
-Homepage = "https://github.com/kameleondb/kameleondb"
-Documentation = "https://kameleondb.github.io/kameleondb"
-Repository = "https://github.com/kameleondb/kameleondb"
-Issues = "https://github.com/kameleondb/kameleondb/issues"
+Homepage = "https://github.com/marcosnataqs/kameleondb"
+Documentation = "https://marcosnataqs.github.io/kameleondb"
+Repository = "https://github.com/marcosnataqs/kameleondb"
+Issues = "https://github.com/marcosnataqs/kameleondb/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/kameleondb"]
