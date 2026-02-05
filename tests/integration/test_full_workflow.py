@@ -46,13 +46,14 @@ class TestFullWorkflow:
             created_by="data-agent",
         )
 
-        # 6. Query records
-        all_contacts = contacts.find()
-        assert len(all_contacts) == 2
+        # 6. Query records by ID
+        john = contacts.find_by_id(id1)
+        assert john is not None
+        assert john["email"] == "john@example.com"
 
-        john = contacts.find(filters={"first_name": "John"})
-        assert len(john) == 1
-        assert john[0]["email"] == "john@example.com"
+        jane = contacts.find_by_id(id2)
+        assert jane is not None
+        assert jane["email"] == "jane@example.com"
 
         # 7. Update a record
         updated = contacts.update(id1, {"age": 31})
@@ -80,7 +81,14 @@ class TestFullWorkflow:
 
         # 11. Delete a record
         contacts.delete(id2)
-        assert contacts.count() == 1
+
+        # Verify deletion (soft delete - record not found)
+        jane = contacts.find_by_id(id2)
+        assert jane is None
+
+        # John should still exist
+        john = contacts.find_by_id(id1)
+        assert john is not None
 
         # 12. Check changelog
         changelog = memory_db.get_changelog(entity_name="Contact")
@@ -108,7 +116,7 @@ class TestFullWorkflow:
                 if_not_exists=True,
             )
 
-        # Should only have one entity with one field
+        # Should only have one entity with expected fields
         schema = memory_db.describe()
         assert schema["total_entities"] == 1
         assert schema["total_fields"] == 2  # email + phone
@@ -136,13 +144,14 @@ class TestFullWorkflow:
         assert memory_db.list_entities() == ["Contact", "Deal", "Company"]
 
         # Can use each independently
-        contacts.insert({"email": "test@example.com"})
-        deals.insert({"name": "Big Deal", "value": 10000.0})
-        companies.insert({"name": "ACME Corp"})
+        contact_id = contacts.insert({"email": "test@example.com"})
+        deal_id = deals.insert({"name": "Big Deal", "value": 10000.0})
+        company_id = companies.insert({"name": "ACME Corp"})
 
-        assert contacts.count() == 1
-        assert deals.count() == 1
-        assert companies.count() == 1
+        # Verify records exist
+        assert contacts.find_by_id(contact_id) is not None
+        assert deals.find_by_id(deal_id) is not None
+        assert companies.find_by_id(company_id) is not None
 
     def test_error_messages_are_actionable(self, memory_db: KameleonDB):
         """Test that error messages help agents fix issues."""
@@ -160,16 +169,8 @@ class TestFullWorkflow:
             assert "Contact" in str(e)
             assert "Available entities:" in str(e)
 
-        # Try to access non-existent field
-        contacts = memory_db.entity("Contact")
-        contacts.insert({"email": "test@example.com"})
-
-        try:
-            contacts.find(filters={"nonexistent": "value"})
-        except Exception as e:
-            # Error should list available fields
-            assert "email" in str(e)
-            assert "Available fields:" in str(e)
+        # Note: filter-based queries are now done via SQL generation
+        # Use get_schema_context() + execute_sql() for complex queries
 
     def test_tools_are_functional(self, memory_db: KameleonDB):
         """Test that exported tools are actually callable."""

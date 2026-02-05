@@ -90,9 +90,14 @@ contact_id = contacts.insert({
     "email": "john@example.com",
 })
 
-# Query data
-results = contacts.find(filters={"first_name": "John"})
-print(results)  # [{"id": "...", "first_name": "John", "email": "john@example.com", ...}]
+# Retrieve by ID
+contact = contacts.find_by_id(contact_id)
+print(contact)  # {"id": "...", "first_name": "John", "email": "john@example.com", ...}
+
+# For complex queries, use SQL generation via schema context
+context = db.get_schema_context()
+# Use context with an LLM to generate SQL, then:
+# results = db.execute_sql("SELECT ... FROM kdb_records WHERE ...")
 
 # Discover schema (agents call this first)
 schema = db.describe()

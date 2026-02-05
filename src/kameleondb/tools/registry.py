@@ -179,14 +179,6 @@ class ToolRegistry:
         )
         tools.append(tool)
 
-        # Find tool
-        tool = self.register(
-            name=f"kameleondb_{entity_name.lower()}_find",
-            func=entity.find,
-            description=f"Find {entity_name} records matching filters.",
-        )
-        tools.append(tool)
-
         # Find by ID tool
         tool = self.register(
             name=f"kameleondb_{entity_name.lower()}_find_by_id",
