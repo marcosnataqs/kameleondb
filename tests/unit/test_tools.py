@@ -167,7 +167,6 @@ class TestToolRegistry:
 
         tool_names = [t.name for t in tools]
         assert "kameleondb_contact_insert" in tool_names
-        assert "kameleondb_contact_find" in tool_names
         assert "kameleondb_contact_find_by_id" in tool_names
         assert "kameleondb_contact_update" in tool_names
         assert "kameleondb_contact_delete" in tool_names

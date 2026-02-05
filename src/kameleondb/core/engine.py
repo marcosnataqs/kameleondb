@@ -6,7 +6,7 @@ from types import EllipsisType
 from typing import Any
 
 from kameleondb.core.connection import DatabaseConnection
-from kameleondb.core.types import EntityInfo, QueryResult
+from kameleondb.core.types import EntityInfo
 from kameleondb.data.jsonb_query import JSONBQuery
 from kameleondb.data.table_manager import TableManager
 from kameleondb.exceptions import EntityNotFoundError
@@ -94,63 +94,6 @@ class Entity:
         """
         return self._get_query().insert_many(records, created_by=created_by)
 
-    def find(
-        self,
-        filters: dict[str, Any] | None = None,
-        order_by: str | None = None,
-        order_desc: bool = False,
-        limit: int | None = None,
-        offset: int | None = None,
-    ) -> list[dict[str, Any]]:
-        """Find records matching filters.
-
-        Args:
-            filters: Filter conditions
-            order_by: Field to order by
-            order_desc: Whether to order descending
-            limit: Maximum records to return
-            offset: Records to skip
-
-        Returns:
-            List of matching records as dicts
-        """
-        result = self._get_query().find(
-            filters=filters,
-            order_by=order_by,
-            order_desc=order_desc,
-            limit=limit,
-            offset=offset,
-        )
-        return result.records
-
-    def find_with_count(
-        self,
-        filters: dict[str, Any] | None = None,
-        order_by: str | None = None,
-        order_desc: bool = False,
-        limit: int | None = None,
-        offset: int | None = None,
-    ) -> QueryResult:
-        """Find records with total count.
-
-        Args:
-            filters: Filter conditions
-            order_by: Field to order by
-            order_desc: Whether to order descending
-            limit: Maximum records to return
-            offset: Records to skip
-
-        Returns:
-            QueryResult with records and total count
-        """
-        return self._get_query().find(
-            filters=filters,
-            order_by=order_by,
-            order_desc=order_desc,
-            limit=limit,
-            offset=offset,
-        )
-
     def find_by_id(self, record_id: str) -> dict[str, Any] | None:
         """Find a record by ID.
 
@@ -188,31 +131,6 @@ class Entity:
             True if deleted
         """
         return self._get_query().delete(record_id)
-
-    def delete_many(
-        self,
-        filters: dict[str, Any] | None = None,
-    ) -> int:
-        """Delete multiple records matching filters.
-
-        Args:
-            filters: Filter conditions
-
-        Returns:
-            Number of records deleted
-        """
-        return self._get_query().delete_many(filters)
-
-    def count(self, filters: dict[str, Any] | None = None) -> int:
-        """Count records matching filters.
-
-        Args:
-            filters: Filter conditions
-
-        Returns:
-            Number of matching records
-        """
-        return self._get_query().count(filters)
 
     def add_field(
         self,
@@ -492,8 +410,8 @@ class KameleonDB:
             name="Contact",
             fields=[{"name": "email", "type": "string"}],
         )
-        contacts.insert({"email": "test@example.com"})
-        print(contacts.find())
+        record_id = contacts.insert({"email": "test@example.com"})
+        print(contacts.find_by_id(record_id))
     """
 
     def __init__(self, url: str, echo: bool = False) -> None:

@@ -208,42 +208,6 @@ def kameleondb_insert_many(
 
 
 @mcp.tool()
-def kameleondb_find(
-    entity_name: str,
-    filters: dict[str, Any] | None = None,
-    order_by: str | None = None,
-    order_desc: bool = False,
-    limit: int | None = None,
-    offset: int | None = None,
-) -> str:
-    """Find records matching filters.
-
-    Args:
-        entity_name: Name of the entity
-        filters: Filter conditions as field:value pairs (equality match)
-        order_by: Field to order results by
-        order_desc: If true, order descending
-        limit: Maximum records to return
-        offset: Number of records to skip
-
-    Returns:
-        JSON array of matching records.
-    """
-    try:
-        entity = get_db().entity(entity_name)
-        records = entity.find(
-            filters=filters,
-            order_by=order_by,
-            order_desc=order_desc,
-            limit=limit,
-            offset=offset,
-        )
-        return json.dumps(records, default=str)
-    except Exception as e:
-        return json.dumps({"error": str(e)})
-
-
-@mcp.tool()
 def kameleondb_find_by_id(
     entity_name: str,
     record_id: str,
@@ -307,50 +271,6 @@ def kameleondb_delete(
         entity = get_db().entity(entity_name)
         result = entity.delete(record_id)
         return json.dumps({"success": result})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
-
-
-@mcp.tool()
-def kameleondb_delete_many(
-    entity_name: str,
-    filters: dict[str, Any] | None = None,
-) -> str:
-    """Delete multiple records matching filters.
-
-    Args:
-        entity_name: Name of the entity
-        filters: Filter conditions (if None, deletes all records)
-
-    Returns:
-        JSON with count of deleted records.
-    """
-    try:
-        entity = get_db().entity(entity_name)
-        count = entity.delete_many(filters)
-        return json.dumps({"deleted_count": count, "success": True})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
-
-
-@mcp.tool()
-def kameleondb_count(
-    entity_name: str,
-    filters: dict[str, Any] | None = None,
-) -> str:
-    """Count records matching filters.
-
-    Args:
-        entity_name: Name of the entity
-        filters: Filter conditions (if None, counts all records)
-
-    Returns:
-        JSON with the count.
-    """
-    try:
-        entity = get_db().entity(entity_name)
-        count = entity.count(filters)
-        return json.dumps({"count": count})
     except Exception as e:
         return json.dumps({"error": str(e)})
 

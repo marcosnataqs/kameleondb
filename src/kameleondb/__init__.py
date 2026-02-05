@@ -19,9 +19,13 @@ Example:
         if_not_exists=True,
     )
 
-    # Insert and query data
+    # Insert data and retrieve by ID
     contact_id = contacts.insert({"first_name": "John", "email": "john@example.com"})
-    results = contacts.find(filters={"first_name": "John"})
+    contact = contacts.find_by_id(contact_id)
+
+    # For complex queries, use SQL generation via schema context
+    context = db.get_schema_context()
+    # Use context with an LLM to generate SQL, then execute with db.execute_sql()
 
     # Discover schema
     schema = db.describe()
