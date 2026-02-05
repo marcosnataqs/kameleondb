@@ -6,10 +6,8 @@ entity-specific tables with foreign key support.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
-
 import contextlib
-import re
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     Boolean,
@@ -92,11 +90,18 @@ class DedicatedTableManager:
         Returns:
             Table name (e.g., "kdb_customer_order")
         """
-        # Convert PascalCase/camelCase to snake_case
-        # Insert underscore before uppercase letters (except at start)
-        snake_case = re.sub(r"(?<!^)(?=[A-Z])", "_", entity_name)
-        # Lowercase and replace spaces/dashes with underscores
-        safe_name = snake_case.lower().replace(" ", "_").replace("-", "_")
+        # Convert PascalCase to snake_case
+        # This handles both regular words and acronyms
+        result = []
+        for i, char in enumerate(entity_name):
+            if char.isupper() and i > 0:
+                result.append("_")
+            result.append(char.lower())
+        # Replace spaces/dashes with underscores, collapse multiple underscores
+        safe_name = "".join(result).replace(" ", "_").replace("-", "_")
+        # Collapse multiple consecutive underscores
+        while "__" in safe_name:
+            safe_name = safe_name.replace("__", "_")
         return f"kdb_{safe_name}"
 
     def create_dedicated_table(
@@ -144,13 +149,9 @@ class DedicatedTableManager:
                 )
             )
 
-        # Create table definition with a fresh metadata to avoid conflicts
-        metadata = MetaData()
-        table = Table(table_name, metadata, *columns)
-
-        # Add indexes
-        indexes = [
-            Index(f"ix_{table_name}_is_deleted", table.c.is_deleted),
+        # Build indexes to include in table definition
+        indexes: list[Index] = [
+            Index(f"ix_{table_name}_is_deleted", "is_deleted"),
         ]
 
         # Add unique/indexed constraints from field definitions
@@ -161,7 +162,7 @@ class DedicatedTableManager:
                 indexes.append(
                     Index(
                         f"ix_{table_name}_{field.column_name}_unique",
-                        table.c[field.column_name],
+                        field.column_name,
                         unique=True,
                     )
                 )
@@ -169,15 +170,18 @@ class DedicatedTableManager:
                 indexes.append(
                     Index(
                         f"ix_{table_name}_{field.column_name}",
-                        table.c[field.column_name],
+                        field.column_name,
                     )
                 )
 
-        # Execute DDL
+        # Create table definition with a fresh metadata to avoid conflicts
+        # Include indexes in table args so they're created with the table
+        metadata = MetaData()
+        table = Table(table_name, metadata, *columns, *indexes)
+
+        # Execute DDL - creates table and indexes together
         with self._engine.begin() as conn:
             table.create(conn)
-            for idx in indexes:
-                idx.create(conn)
 
         return table_name
 

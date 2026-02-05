@@ -19,7 +19,7 @@ class TestDedicatedTableManager:
 
         assert manager.generate_table_name("Contact") == "kdb_contact"
         assert manager.generate_table_name("CustomerOrder") == "kdb_customer_order"
-        assert manager.generate_table_name("API Key") == "kdb_api_key"
+        assert manager.generate_table_name("User Profile") == "kdb_user_profile"
 
     def test_create_dedicated_table(self, memory_db: KameleonDB) -> None:
         """Test creating a dedicated table."""
