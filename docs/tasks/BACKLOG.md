@@ -65,3 +65,45 @@ Complete relational support. See [spec](../specs/001-hybrid-storage.md).
 - [ ] Bulk operations
   - [ ] `connect_many()` / `disconnect_many()`
 
+---
+
+## Query Intelligence - Progressive Materialization
+
+Track query metrics and provide intelligent materialization suggestions. See [spec](../specs/002-query-intelligence.md).
+
+**Concept**: When queries exceed performance thresholds, return results + actionable suggestions for agents to materialize entities. No scheduler needed—intelligence emerges from query feedback.
+
+### Phase 1: Query Metrics Foundation
+
+- [ ] Add `QueryMetric` model to track executions
+  - [ ] `kdb_query_metrics` table
+  - [ ] Track entity, execution time, row count, joins
+  - [ ] Retention/cleanup logic
+
+- [ ] Add metrics types to `core/types.py`
+  - [ ] `QueryMetrics` dataclass
+  - [ ] `MaterializationSuggestion` dataclass
+  - [ ] `QueryExecutionResult` dataclass
+  - [ ] `MaterializationPolicy` configuration
+
+- [ ] Create `MetricsCollector` class (`query/metrics.py`)
+  - [ ] `record_query()` - save metrics after execution
+  - [ ] `get_entity_stats()` - aggregate stats
+  - [ ] `cleanup_old_metrics()` - retention management
+
+- [ ] Modify `execute_sql()` for timing
+  - [ ] Wrap execution with timing
+  - [ ] Record metrics (backward compatible)
+
+- [ ] Add `execute_sql_with_metrics()` method
+  - [ ] Return `QueryExecutionResult` with metrics and suggestions
+
+### Phase 2: Suggestion Engine
+
+- [ ] Create `SuggestionEngine` class (`query/suggestions.py`)
+  - [ ] `evaluate_query()` - check immediate thresholds
+  - [ ] `evaluate_entity()` - check historical patterns
+  - [ ] Generate actionable suggestions
+
+- [ ] Wire suggestion engine to query execution
+  - [ ] Attach suggestions to `QueryExecutionResult`

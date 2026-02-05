@@ -23,14 +23,15 @@ KameleonDB **makes agents the data engineers**. Agents don't just consume data�
 
 This is **schema-on-reason**: structure emerges from agent reasoning, not upfront human design. As agents learn more about the data, they adapt the schema to match their understanding.
 
-**Six First Principles:**
+**Seven First Principles:**
 
-1. **Agent-First Design** — Built for AI agents as primary users, with APIs optimized for reasoning patterns
-2. **Schema-on-Reason** — Schema emerges from agent reasoning, not upfront human design
-3. **Provenance & Auditability** — Every decision traceable to agent reasoning chains
-4. **Policy-Driven Governance** — Agent autonomy bounded by declarative policies, not manual approvals
-5. **Security by Design** — Zero-trust architecture where agents are untrusted by default
-6. **Enterprise-Grade Reliability** — Production-ready with ACID guarantees and multi-tenancy
+1. **Radical Simplicity** — Perfection is achieved by removing things, not adding them
+2. **Agent-First Design** — Built for AI agents as primary users, with APIs optimized for reasoning patterns
+3. **Schema-on-Reason** — Schema emerges from agent reasoning, not upfront human design
+4. **Provenance & Auditability** — Every decision traceable to agent reasoning chains
+5. **Policy-Driven Governance** — Agent autonomy bounded by declarative policies, not manual approvals
+6. **Security by Design** — Zero-trust architecture where agents are untrusted by default
+7. **Enterprise-Grade Reliability** — Production-ready with ACID guarantees and multi-tenancy
 
 See [AGENTS.md](AGENTS.md) for complete details.
 

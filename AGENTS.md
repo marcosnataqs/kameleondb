@@ -10,9 +10,21 @@ This file provides guidance to AI agents working with code in this repository.
 
 ## First Principles
 
-KameleonDB is built on six foundational principles that guide all architectural decisions:
+KameleonDB is built on seven foundational principles that guide all architectural decisions:
 
-### 1. Agent-First Design
+### 1. Radical Simplicity
+
+Perfection is achieved by removing things, not adding them.
+
+- The most sophisticated systems are the simplest ones that solve the problem
+- Every abstraction, layer, and feature must justify its existence
+- When in doubt, remove it—complexity is the enemy of reliability
+- Code that doesn't exist has no bugs, needs no maintenance, and runs infinitely fast
+- "Keep it simple, stupid" is not a limitation, it's the highest engineering discipline
+
+**Implication:** Before adding anything, ask "Can we solve this by removing something instead?"
+
+### 2. Agent-First Design
 
 All capabilities are built for AI agents as primary users, not humans.
 
@@ -23,7 +35,7 @@ All capabilities are built for AI agents as primary users, not humans.
 
 **Implication:** We don't ask "Can a human use this?" We ask "Can an agent reason about this?"
 
-### 2. Schema-on-Reason
+### 3. Schema-on-Reason
 
 Schema emerges from continuous agent reasoning, not upfront human design.
 
@@ -34,7 +46,7 @@ Schema emerges from continuous agent reasoning, not upfront human design.
 
 **Implication:** The database adapts to what agents learn, not what humans predicted.
 
-### 3. Provenance & Auditability
+### 4. Provenance & Auditability
 
 Every schema decision and data transformation must be traceable to agent reasoning.
 
@@ -46,7 +58,7 @@ Every schema decision and data transformation must be traceable to agent reasoni
 
 **Implication:** Trust comes from transparency, not black-box magic.
 
-### 4. Policy-Driven Governance
+### 5. Policy-Driven Governance
 
 Agent autonomy is bounded by declarative policies, not manual approvals.
 
@@ -58,7 +70,7 @@ Agent autonomy is bounded by declarative policies, not manual approvals.
 
 **Implication:** Governance scales through automation, not gatekeepers.
 
-### 5. Security by Design
+### 6. Security by Design
 
 Zero-trust architecture where agents are untrusted by default.
 
@@ -70,7 +82,7 @@ Zero-trust architecture where agents are untrusted by default.
 
 **Implication:** Agents are powerful tools, not privileged users.
 
-### 6. Enterprise-Grade Reliability
+### 7. Enterprise-Grade Reliability
 
 Built for production workloads where downtime and data loss are unacceptable.
 

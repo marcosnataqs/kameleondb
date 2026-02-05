@@ -23,14 +23,15 @@ docs/
 
 ## First Principles
 
-KameleonDB follows six core principles (see [AGENTS.md](AGENTS.md) for full details):
+KameleonDB follows seven core principles (see [AGENTS.md](AGENTS.md) for full details):
 
-1. **Agent-First Design** - APIs optimized for agent reasoning patterns, not human convenience
-2. **Schema-on-Reason** - Schema emerges from agent reasoning, not upfront human design
-3. **Provenance & Auditability** - All decisions traceable to reasoning chains
-4. **Policy-Driven Governance** - Agent autonomy bounded by declarative policies
-5. **Security by Design** - Zero-trust architecture, agents are untrusted by default
-6. **Enterprise-Grade Reliability** - Production-ready with ACID guarantees and multi-tenancy
+1. **Radical Simplicity** - Perfection is achieved by removing things, not adding them
+2. **Agent-First Design** - APIs optimized for agent reasoning patterns, not human convenience
+3. **Schema-on-Reason** - Schema emerges from agent reasoning, not upfront human design
+4. **Provenance & Auditability** - All decisions traceable to reasoning chains
+5. **Policy-Driven Governance** - Agent autonomy bounded by declarative policies
+6. **Security by Design** - Zero-trust architecture, agents are untrusted by default
+7. **Enterprise-Grade Reliability** - Production-ready with ACID guarantees and multi-tenancy
 
 When making design decisions, always align with these principles.
 
