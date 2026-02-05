@@ -75,7 +75,12 @@ from kameleondb.query import (
 )
 from kameleondb.tools import ToolDefinition, ToolRegistry
 
-__version__ = "0.2.0-alpha"
+try:
+    from importlib.metadata import version
+
+    __version__ = version("kameleondb")
+except Exception:
+    __version__ = "0.1.0"  # Fallback for development
 
 __all__ = [
     # Main classes
