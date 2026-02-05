@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -394,3 +394,51 @@ class Record(Base):
         if self.data:
             result.update(self.data)
         return result
+
+
+# === Query Metrics (ADR-002: Query Intelligence) ===
+
+
+class QueryMetric(Base):
+    """Tracks individual query executions for intelligence and suggestions.
+
+    Used to collect metrics on query performance and patterns, enabling
+    intelligent suggestions for entity materialization.
+    """
+
+    __tablename__ = "kdb_query_metrics"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    timestamp: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, nullable=False, index=True
+    )
+
+    # Query details
+    entity_name: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    query_type: Mapped[str] = mapped_column(String(20), nullable=False)  # SELECT, INSERT, etc.
+    execution_time_ms: Mapped[float] = mapped_column(Float, nullable=False)
+    row_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Pattern detection
+    has_join: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    tables_accessed: Mapped[dict[str, Any] | None] = mapped_column(JSONType, nullable=True)
+
+    # Context
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Composite index for efficient aggregation
+    __table_args__ = (Index("ix_kdb_query_metrics_entity_time", "entity_name", "timestamp"),)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+            "entity_name": self.entity_name,
+            "query_type": self.query_type,
+            "execution_time_ms": self.execution_time_ms,
+            "row_count": self.row_count,
+            "has_join": self.has_join,
+            "tables_accessed": self.tables_accessed,
+            "created_by": self.created_by,
+        }

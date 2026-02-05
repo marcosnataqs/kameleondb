@@ -17,6 +17,8 @@ Example:
 """
 
 from kameleondb.query.context import SchemaContextBuilder, get_schema_context
+from kameleondb.query.metrics import MetricsCollector
+from kameleondb.query.suggestions import SuggestionEngine
 from kameleondb.query.validator import QueryValidator, ValidationResult
 
 __all__ = [
@@ -24,4 +26,6 @@ __all__ = [
     "get_schema_context",
     "QueryValidator",
     "ValidationResult",
+    "MetricsCollector",
+    "SuggestionEngine",
 ]

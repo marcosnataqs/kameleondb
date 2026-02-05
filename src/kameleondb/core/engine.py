@@ -414,18 +414,35 @@ class KameleonDB:
         print(contacts.find_by_id(record_id))
     """
 
-    def __init__(self, url: str, echo: bool = False) -> None:
+    def __init__(
+        self,
+        url: str,
+        echo: bool = False,
+        materialization_policy: Any = None,
+    ) -> None:
         """Initialize KameleonDB.
 
         Args:
             url: Database connection URL
             echo: Whether to echo SQL statements (for debugging)
+            materialization_policy: Optional policy for query intelligence
         """
+        from kameleondb.core.types import MaterializationPolicy
+        from kameleondb.query.metrics import MetricsCollector
+        from kameleondb.query.suggestions import SuggestionEngine
+
         self._connection = DatabaseConnection(url, echo=echo)
         self._schema_engine = SchemaEngine(self._connection)
         self._table_manager = TableManager(self._connection.engine)
         self._tool_registry: ToolRegistry | None = None
         self._entities: dict[str, Entity] = {}
+
+        # Query Intelligence (ADR-002)
+        self._materialization_policy = materialization_policy or MaterializationPolicy()
+        self._metrics_collector = MetricsCollector(
+            self._connection.engine, self._materialization_policy
+        )
+        self._suggestion_engine = SuggestionEngine(self._materialization_policy)
 
         # Initialize meta-tables (schema definitions)
         self._schema_engine.initialize()
@@ -717,3 +734,148 @@ class KameleonDB:
                 return [dict(zip(columns, row, strict=True)) for row in rows]
         except Exception as e:
             raise QueryError(f"Query execution failed: {e}") from e
+
+    def execute_sql_with_metrics(
+        self,
+        sql: str,
+        read_only: bool = True,
+        entity_name: str | None = None,
+        created_by: str | None = None,
+    ) -> Any:
+        """Execute a validated SQL query with metrics tracking.
+
+        Returns results along with execution metrics and materialization
+        suggestions. Use this for intelligent query monitoring.
+
+        Args:
+            sql: SQL query to execute
+            read_only: If True, only SELECT statements allowed (default True)
+            entity_name: Primary entity being queried (for metrics)
+            created_by: Agent/user identifier (for metrics)
+
+        Returns:
+            QueryExecutionResult with rows, metrics, and suggestions
+
+        Raises:
+            QueryError: If validation fails or execution fails
+
+        Example:
+            >>> result = db.execute_sql_with_metrics(
+            ...     "SELECT * FROM kdb_records WHERE entity_id = '...'",
+            ...     entity_name="Contact"
+            ... )
+            >>> print(f"Returned {result.metrics.row_count} rows in {result.metrics.execution_time_ms}ms")
+            >>> if result.suggestions:
+            ...     print(f"Suggestion: {result.suggestions[0].reason}")
+        """
+        import time
+
+        from sqlalchemy import text
+
+        from kameleondb.core.types import QueryExecutionResult, QueryMetrics
+        from kameleondb.exceptions import QueryError
+        from kameleondb.query.validator import QueryValidator
+
+        # Validate the query
+        validator = QueryValidator(db=self)
+        validation = validator.validate(sql, read_only=read_only)
+
+        if not validation.valid:
+            raise QueryError(f"Query validation failed: {validation.error}")
+
+        # Execute with timing
+        start_time = time.perf_counter()
+        try:
+            with self._connection.engine.connect() as conn:
+                query_result = conn.execute(text(validation.sql))
+                rows_raw = query_result.fetchall()
+                columns = query_result.keys()
+                rows = [dict(zip(columns, row, strict=True)) for row in rows_raw]
+        except Exception as e:
+            raise QueryError(f"Query execution failed: {e}") from e
+
+        execution_time_ms = (time.perf_counter() - start_time) * 1000
+
+        # Build metrics
+        metrics = QueryMetrics(
+            execution_time_ms=execution_time_ms,
+            row_count=len(rows),
+            entities_accessed=[entity_name] if entity_name else [],
+            has_join="JOIN" in sql.upper(),
+            query_type=validation.query_type.value if validation.query_type else "UNKNOWN",
+        )
+
+        # Record metrics
+        self._metrics_collector.record_query(
+            metrics=metrics,
+            entity_name=entity_name,
+            tables_accessed=list(validation.tables_accessed)
+            if validation.tables_accessed
+            else None,
+            created_by=created_by,
+        )
+
+        # Generate suggestions
+        suggestions = []
+        if entity_name:
+            # Get entity info for storage mode
+            entity_info = self._schema_engine.get_entity(entity_name)
+            storage_mode = entity_info.storage_mode if entity_info else "shared"
+
+            suggestions = self._suggestion_engine.generate_suggestions(
+                entity_name=entity_name,
+                metrics=metrics,
+                storage_mode=storage_mode,
+            )
+
+        return QueryExecutionResult(
+            rows=rows,
+            metrics=metrics,
+            suggestions=suggestions,
+            warnings=validation.warnings,
+        )
+
+    def get_entity_stats(self, entity_name: str) -> Any:
+        """Get aggregated statistics for an entity.
+
+        Returns metrics about query performance and patterns for the entity.
+
+        Args:
+            entity_name: Entity to get stats for
+
+        Returns:
+            EntityStats with aggregated metrics
+
+        Example:
+            >>> stats = db.get_entity_stats("Contact")
+            >>> print(f"Total queries: {stats.total_queries}")
+            >>> print(f"Avg time: {stats.avg_execution_time_ms}ms")
+            >>> if stats.suggestion:
+            ...     print(f"Suggestion: {stats.suggestion}")
+        """
+        from sqlalchemy import text
+
+        # Get entity info
+        entity = self._schema_engine.get_entity(entity_name)
+        storage_mode = entity.storage_mode if entity else "shared"
+
+        # Get record count
+        record_count = 0
+        if entity:
+            with self._connection.engine.connect() as conn:
+                result = conn.execute(
+                    text(
+                        """
+                    SELECT COUNT(*) FROM kdb_records
+                    WHERE entity_id = :entity_id AND is_deleted = false
+                """
+                    ),
+                    {"entity_id": entity.id},
+                )
+                record_count = result.scalar() or 0
+
+        return self._metrics_collector.get_entity_stats(
+            entity_name=entity_name,
+            storage_mode=storage_mode,
+            record_count=record_count,
+        )
