@@ -6,25 +6,64 @@ Active work in progress.
 
 ## In Progress
 
-### PyPI Publishing Setup
+### CLI Tool Implementation
 
-Prepare and publish KameleonDB to PyPI. See [spec](../specs/003-pypi-publishing.md).
+Add a command-line interface using Typer. See [spec](../specs/004-cli-tool.md).
 
-**Phase 1: Pre-Publishing Fixes**
-- [ ] Fix version mismatch (pyproject.toml vs __init__.py)
-- [ ] Populate CHANGELOG.md with release notes
-- [ ] Make PostgreSQL an optional dependency
-- [ ] Add author/maintainer email
+**Phase 1: Core Structure**
+- [ ] Add `typer` and `rich` to dependencies
+- [ ] Create CLI module structure (`src/kameleondb/cli/`)
+- [ ] Add `kameleondb` entry point to pyproject.toml
+- [ ] Implement global options (--database, --json, --echo)
 
-**Phase 2: CI/CD Workflow**
-- [ ] Create `.github/workflows/publish.yml`
+**Phase 2: Schema Commands**
+- [ ] `schema list`
+- [ ] `schema describe`
+- [ ] `schema create`
+- [ ] `schema drop`
+- [ ] `schema add-field`
+- [ ] `schema context`
+
+**Phase 3: Data Commands**
+- [ ] `data insert`
+- [ ] `data get`
+- [ ] `data update`
+- [ ] `data delete`
+- [ ] `data list`
+
+**Phase 4: Query & Storage Commands**
+- [ ] `query run`
+- [ ] `query validate`
+- [ ] `storage status`
+- [ ] `storage materialize`
+- [ ] `storage dematerialize`
+
+**Phase 5: Admin Commands**
+- [ ] `init`
+- [ ] `info`
+- [ ] `changelog`
+
+**Phase 6: Polish**
+- [ ] Rich table output
+- [ ] Progress bars
+- [ ] Error handling
+- [ ] Tests
+
+---
+
+## Blocked
+
+### PyPI Publishing
+
+Waiting on CLI implementation to complete before v0.1.0 release.
+
+- [x] Fix version mismatch
+- [x] Populate CHANGELOG.md
+- [x] Create publish.yml workflow
+- [ ] **Blocked**: Complete CLI first
 - [ ] Set up PyPI trusted publishing
-- [ ] Create GitHub environments (testpypi, pypi)
-
-**Phase 3: Release**
 - [ ] Test on TestPyPI
-- [ ] Create v0.1.0 GitHub release
-- [ ] Verify on PyPI
+- [ ] Create v0.1.0 release
 
 ---
 
