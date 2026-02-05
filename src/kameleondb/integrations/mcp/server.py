@@ -276,50 +276,6 @@ def kameleondb_delete(
 
 
 @mcp.tool()
-def kameleondb_delete_many(
-    entity_name: str,
-    filters: dict[str, Any] | None = None,
-) -> str:
-    """Delete multiple records matching filters.
-
-    Args:
-        entity_name: Name of the entity
-        filters: Filter conditions (if None, deletes all records)
-
-    Returns:
-        JSON with count of deleted records.
-    """
-    try:
-        entity = get_db().entity(entity_name)
-        count = entity.delete_many(filters)
-        return json.dumps({"deleted_count": count, "success": True})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
-
-
-@mcp.tool()
-def kameleondb_count(
-    entity_name: str,
-    filters: dict[str, Any] | None = None,
-) -> str:
-    """Count records matching filters.
-
-    Args:
-        entity_name: Name of the entity
-        filters: Filter conditions (if None, counts all records)
-
-    Returns:
-        JSON with the count.
-    """
-    try:
-        entity = get_db().entity(entity_name)
-        count = entity.count(filters)
-        return json.dumps({"count": count})
-    except Exception as e:
-        return json.dumps({"error": str(e)})
-
-
-@mcp.tool()
 def kameleondb_alter_entity(
     entity_name: str,
     add_fields: list[dict[str, Any]] | None = None,
