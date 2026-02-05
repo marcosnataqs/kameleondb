@@ -14,6 +14,17 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from kameleondb.schema.models import (
+    EntityDefinition,
+    FieldDefinition,
+    Record,
+    StorageMode,
+)
+from kameleondb.storage.dedicated import DedicatedTableManager
+
+if TYPE_CHECKING:
+    from sqlalchemy import Engine
+
 
 def _parse_datetime(value: Any) -> datetime | None:
     """Parse datetime value that might be a string (SQLite) or datetime object (PostgreSQL)."""
@@ -31,18 +42,6 @@ def _parse_datetime(value: Any) -> datetime | None:
             # Try without microseconds
             return datetime.strptime(value, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
     return None
-
-
-from kameleondb.schema.models import (
-    EntityDefinition,
-    FieldDefinition,
-    Record,
-    StorageMode,
-)
-from kameleondb.storage.dedicated import DedicatedTableManager
-
-if TYPE_CHECKING:
-    from sqlalchemy import Engine
 
 
 @dataclass
@@ -226,13 +225,12 @@ class StorageMigration:
             # 4. Update entity metadata
             self._update_entity_storage_mode(entity.id, StorageMode.DEDICATED, table_name)
 
-            # 5. Mark old records as deleted (soft delete from shared table)
+            # 5. Delete old records from shared table (hard delete since data is now in dedicated table)
             with Session(self._engine) as session:
                 session.execute(
                     text(
                         """
-                    UPDATE kdb_records
-                    SET is_deleted = true
+                    DELETE FROM kdb_records
                     WHERE entity_id = :entity_id
                 """
                     ),
