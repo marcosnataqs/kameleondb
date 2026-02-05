@@ -215,9 +215,7 @@ class DedicatedTableManager:
             The constraint name
         """
         if not relationship.foreign_key_field:
-            raise ValueError(
-                f"Relationship '{relationship.name}' has no foreign key field defined"
-            )
+            raise ValueError(f"Relationship '{relationship.name}' has no foreign key field defined")
 
         constraint_name = f"fk_{source_table}_{relationship.name}"
         on_delete = _map_on_delete(relationship.on_delete)

@@ -9,10 +9,29 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+
+
+def _parse_datetime(value: Any) -> datetime | None:
+    """Parse datetime value that might be a string (SQLite) or datetime object (PostgreSQL)."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        # SQLite returns datetime as ISO format string
+        # Handle both with and without timezone
+        try:
+            # Try with microseconds
+            return datetime.fromisoformat(value.replace(" ", "T"))
+        except ValueError:
+            # Try without microseconds
+            return datetime.strptime(value, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
+    return None
+
 
 from kameleondb.schema.models import (
     EntityDefinition,
@@ -137,7 +156,13 @@ class StorageMigration:
             # Build column list for INSERT
             active_fields = [f for f in fields if f.is_active]
             field_columns = [f.column_name for f in active_fields]
-            all_columns = ["id", "created_at", "updated_at", "created_by", "is_deleted"] + field_columns
+            all_columns = [
+                "id",
+                "created_at",
+                "updated_at",
+                "created_by",
+                "is_deleted",
+            ] + field_columns
 
             for batch_num in range(total_batches):
                 offset = batch_num * batch_size
@@ -176,7 +201,9 @@ class StorageMigration:
                         columns_str = ", ".join(f'"{c}"' for c in all_columns)
                         placeholders = ", ".join(f":{c}" for c in all_columns)
                         session.execute(
-                            text(f'INSERT INTO "{table_name}" ({columns_str}) VALUES ({placeholders})'),
+                            text(
+                                f'INSERT INTO "{table_name}" ({columns_str}) VALUES ({placeholders})'
+                            ),
                             values,
                         )
 
@@ -338,13 +365,17 @@ class StorageMigration:
                             if field.column_name in row and row[field.column_name] is not None:
                                 data[field.column_name] = row[field.column_name]
 
+                        # Parse datetime values (SQLite returns strings)
+                        created_at = _parse_datetime(row["created_at"])
+                        updated_at = _parse_datetime(row["updated_at"])
+
                         # Insert into shared table
                         record = Record(
                             id=row["id"],
                             entity_id=entity.id,
                             data=data,
-                            created_at=row["created_at"],
-                            updated_at=row["updated_at"],
+                            created_at=created_at,
+                            updated_at=updated_at,
                             created_by=row.get("created_by"),
                             is_deleted=False,
                         )

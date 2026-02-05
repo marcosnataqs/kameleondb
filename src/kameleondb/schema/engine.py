@@ -137,14 +137,18 @@ class SchemaEngine:
             entry = SchemaChangelog(
                 operation=operation,
                 entity_name=entity_name,
-                old_value=json.dumps({
-                    "storage_mode": old_mode,
-                }),
-                new_value=json.dumps({
-                    "storage_mode": new_mode,
-                    "dedicated_table_name": table_name,
-                    "records_migrated": records_migrated,
-                }),
+                old_value=json.dumps(
+                    {
+                        "storage_mode": old_mode,
+                    }
+                ),
+                new_value=json.dumps(
+                    {
+                        "storage_mode": new_mode,
+                        "dedicated_table_name": table_name,
+                        "records_migrated": records_migrated,
+                    }
+                ),
                 created_by=created_by,
                 reason=reason,
             )

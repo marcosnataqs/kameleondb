@@ -45,9 +45,7 @@ class TestDedicatedTableManager:
         assert table_name == "kdb_test_entity"
         assert manager.table_exists(table_name)
 
-    def test_create_dedicated_table_fails_if_already_dedicated(
-        self, memory_db: KameleonDB
-    ) -> None:
+    def test_create_dedicated_table_fails_if_already_dedicated(self, memory_db: KameleonDB) -> None:
         """Test that creating a dedicated table fails if entity is already dedicated."""
         memory_db.create_entity("TestEntity", fields=[{"name": "name", "type": "string"}])
 
