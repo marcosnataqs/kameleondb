@@ -173,7 +173,8 @@ class MetricsCollector:
                 {"cutoff": cutoff},
             )
             session.commit()
-            return result.rowcount or 0
+            # Use getattr to avoid mypy error with rowcount
+            return getattr(result, "rowcount", 0) or 0
 
     def get_metrics_count(self, entity_name: str | None = None) -> int:
         """Get the count of stored metrics.
