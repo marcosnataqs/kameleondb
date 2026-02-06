@@ -147,7 +147,11 @@ class QueryValidator:
                 entity_def = db._schema_engine.get_entity(entity_name)
 
                 # Add dedicated table name if entity is materialized
-                if entity_def.storage_mode == "dedicated" and entity_def.dedicated_table_name:
+                if (
+                    entity_def is not None
+                    and entity_def.storage_mode == "dedicated"
+                    and entity_def.dedicated_table_name
+                ):
                     allowed.add(entity_def.dedicated_table_name.lower())
         except Exception:
             # If schema query fails, fall back to static whitelist

@@ -22,11 +22,11 @@ from sqlalchemy import (
     Text,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
 
 from kameleondb.schema.models import (
     EntityDefinition,
     FieldDefinition,
+    JSONType,  # Dialect-aware JSON type
     OnDeleteAction,
     RelationshipDefinition,
     StorageMode,
@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 
 
 # Mapping from KameleonDB field types to SQLAlchemy column types
-# Using Any to avoid complex generic type annotations
+# Note: 'json' is handled specially - we use JSONType instance directly
 FIELD_TYPE_MAP: dict[str, Any] = {
     "string": String,
     "text": Text,
@@ -46,7 +46,7 @@ FIELD_TYPE_MAP: dict[str, Any] = {
     "bool": Boolean,
     "datetime": DateTime,
     "uuid": String,
-    "json": JSONB,
+    "json": None,  # Handled specially - see usage below
 }
 
 
@@ -141,14 +141,18 @@ class DedicatedTableManager:
             if not field.is_active:
                 continue
 
-            type_class = FIELD_TYPE_MAP.get(field.field_type, String)
-            # Handle types that need special parameters
-            if type_class is String:
-                col_type: Any = String(255)
-            elif type_class is DateTime:
-                col_type = DateTime(timezone=True)
+            # Handle JSON type specially - use dialect-aware JSONType
+            if field.field_type == "json":
+                col_type: Any = JSONType
             else:
-                col_type = type_class()
+                type_class = FIELD_TYPE_MAP.get(field.field_type, String)
+                # Handle types that need special parameters
+                if type_class is String:
+                    col_type = String(255)
+                elif type_class is DateTime:
+                    col_type = DateTime(timezone=True)
+                else:
+                    col_type = type_class()
             columns.append(
                 Column(
                     field.column_name,

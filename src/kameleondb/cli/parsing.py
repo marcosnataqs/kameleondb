@@ -76,7 +76,10 @@ def read_json_file(path: str) -> dict[str, Any]:
         raise FileNotFoundError(f"File not found: {path}")
 
     with file_path.open("r") as f:
-        return json.load(f)
+        data = json.load(f)
+        if not isinstance(data, dict):
+            raise ValueError(f"Expected JSON object, got {type(data).__name__}")
+        return data
 
 
 def read_jsonl_file(path: str) -> list[dict[str, Any]]:
