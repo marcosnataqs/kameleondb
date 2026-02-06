@@ -106,7 +106,7 @@ class OutputFormatter:
                 for rel in entity.relationships:
                     rel_table.add_row(
                         rel.name,
-                        rel.target_entity_name,
+                        rel.target_entity,
                         rel.relationship_type,
                     )
                 console.print(rel_table)

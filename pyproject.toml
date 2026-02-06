@@ -136,6 +136,12 @@ addopts = "-v --tb=short"
 markers = [
     "integration: marks tests as integration tests",
 ]
+filterwarnings = [
+    # SQLAlchemy + Python 3.12 sqlite3 datetime adapter deprecation
+    # This is an upstream issue - SQLAlchemy will address it in future versions
+    # See: https://docs.python.org/3.12/library/sqlite3.html#default-adapters-and-converters-deprecated
+    "ignore:The default datetime adapter is deprecated:DeprecationWarning",
+]
 
 [tool.coverage.run]
 source = ["src/kameleondb"]
