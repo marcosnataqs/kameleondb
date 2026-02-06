@@ -9,6 +9,8 @@
 
 # KameleonDB
 
+*Find the true color of your data.*
+
 **The First Database Built for Agents to Own, Not Just Query**
 
 Most databases let agents query data that humans structured. KameleonDB goes further: **agents own the entire data lifecycle**—from schema design to data ingestion to continuous evolution. You provide the goals and policies, agents build and manage the database.
