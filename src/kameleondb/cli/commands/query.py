@@ -29,7 +29,9 @@ def query_run(
     ] = True,
     entity_name: Annotated[
         str | None,
-        typer.Option("--entity", "-e", help="Primary entity being queried (enables optimization hints)"),
+        typer.Option(
+            "--entity", "-e", help="Primary entity being queried (enables optimization hints)"
+        ),
     ] = None,
     show_metrics: Annotated[
         bool,
@@ -72,12 +74,14 @@ def query_run(
         # Output results
         if cli_ctx.json_output:
             # JSON output includes everything
-            formatter.print_data({
-                "rows": result.rows,
-                "metrics": result.metrics.model_dump(),
-                "suggestions": [s.model_dump() for s in result.suggestions],
-                "warnings": result.warnings,
-            })
+            formatter.print_data(
+                {
+                    "rows": result.rows,
+                    "metrics": result.metrics.model_dump(),
+                    "suggestions": [s.model_dump() for s in result.suggestions],
+                    "warnings": result.warnings,
+                }
+            )
         else:
             # Human-readable output
             if result.rows:

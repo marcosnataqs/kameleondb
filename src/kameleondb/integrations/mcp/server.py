@@ -682,8 +682,6 @@ def kameleondb_dematerialize_entity(
 # === Query Intelligence Tools (ADR-002: Query Metrics) ===
 
 
-
-
 @mcp.tool()
 def kameleondb_get_entity_stats(
     entity_name: str,
