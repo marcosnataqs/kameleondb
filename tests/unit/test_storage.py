@@ -273,3 +273,107 @@ class TestKameleonDBMaterialization:
         assert len(materialize_entries) == 1
         assert materialize_entries[0]["created_by"] == "test_agent"
         assert materialize_entries[0]["reason"] == "Enable foreign keys"
+
+    def test_query_dedicated_table_after_materialization(self, memory_db: KameleonDB) -> None:
+        """Test that SQL queries work on dedicated tables after materialization."""
+        # Create entity and add data
+        entity = memory_db.create_entity(
+            "Product",
+            fields=[
+                {"name": "name", "type": "string"},
+                {"name": "price", "type": "float"},
+            ],
+        )
+        entity.insert({"name": "Widget", "price": 19.99})
+        entity.insert({"name": "Gadget", "price": 5.99})
+
+        # Materialize to dedicated table
+        memory_db.materialize_entity("Product")
+
+        # Execute SQL query on dedicated table (use typed columns)
+        result = memory_db.execute_sql("SELECT * FROM kdb_product WHERE price > 10.0")
+
+        assert len(result) == 1
+        # Access typed columns directly
+        assert result[0]["name"] == "Widget"
+        assert result[0]["price"] == 19.99
+
+    def test_migration_counter_excludes_deleted_records(self, memory_db: KameleonDB) -> None:
+        """Test that migration counter only counts non-deleted records."""
+        # Create entity with 5 records
+        entity = memory_db.create_entity(
+            "Contact",
+            fields=[
+                {"name": "name", "type": "string"},
+            ],
+        )
+        ids = []
+        for i in range(5):
+            record_id = entity.insert({"name": f"Contact {i}"})
+            ids.append(record_id)
+
+        # Soft-delete one record BEFORE materialization
+        entity.delete(ids[0])
+
+        # Materialize to dedicated (should migrate only 4 non-deleted records)
+        report = memory_db.materialize_entity("Contact")
+
+        # Report should show 4 migrated (not 5)
+        assert report["records_migrated"] == 4
+        assert report["success"]
+
+        # Now dematerialize back and verify counter again
+        report2 = memory_db.dematerialize_entity("Contact")
+        assert report2["records_migrated"] == 4
+        assert report2["success"]
+
+    def test_cross_storage_join(self, memory_db: KameleonDB) -> None:
+        """Test JOINs between shared and dedicated tables."""
+        # Create two related entities
+        property_entity = memory_db.create_entity(
+            "Property",
+            fields=[
+                {"name": "address", "type": "string"},
+            ],
+        )
+        transaction_entity = memory_db.create_entity(
+            "Transaction",
+            fields=[
+                {"name": "property_id", "type": "string"},
+                {"name": "amount", "type": "float"},
+            ],
+        )
+
+        # Insert property
+        prop_id = property_entity.insert({"address": "123 Main St"})
+
+        # Insert transaction referencing property
+        transaction_entity.insert(
+            {
+                "property_id": prop_id,
+                "amount": 500000.0,
+            }
+        )
+
+        # Materialize Property to dedicated table
+        memory_db.materialize_entity("Property")
+
+        # Get entity IDs for query
+        txn_entity_id = memory_db._schema_engine.get_entity("Transaction").id
+
+        # Execute cross-storage JOIN
+        # Transaction stays in shared (kdb_records with JSON data)
+        # Property moves to dedicated (kdb_property with typed columns)
+        result = memory_db.execute_sql(
+            f"""
+            SELECT
+              t.id as transaction_id,
+              p.address as property_address
+            FROM kdb_records t
+            JOIN kdb_property p ON json_extract(t.data, '$.property_id') = p.id
+            WHERE t.entity_id = '{txn_entity_id}'
+        """
+        )
+
+        assert len(result) == 1
+        assert result[0]["property_address"] == "123 Main St"

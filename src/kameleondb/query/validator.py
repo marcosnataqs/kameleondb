@@ -110,8 +110,51 @@ class QueryValidator:
             allow_writes: Whether to allow INSERT/UPDATE/DELETE (default False)
         """
         self._db = db
-        self._allowed_tables = allowed_tables or ALLOWED_TABLES
         self._allow_writes = allow_writes
+
+        # Build allowed tables list
+        if allowed_tables is not None:
+            # Explicit whitelist provided
+            self._allowed_tables = allowed_tables
+        elif db is not None:
+            # Build dynamic whitelist from schema
+            self._allowed_tables = self._build_dynamic_whitelist(db)
+        else:
+            # Use static whitelist (backward compatibility)
+            self._allowed_tables = ALLOWED_TABLES.copy()
+
+    def _build_dynamic_whitelist(self, db: KameleonDB) -> set[str]:
+        """Build allowed tables set from schema metadata.
+
+        This method queries the schema engine to find all entities and includes
+        dedicated table names for materialized entities. This allows SQL queries
+        to access dedicated tables after materialization.
+
+        Args:
+            db: KameleonDB instance to query schema from
+
+        Returns:
+            Set of allowed table names (lowercase)
+        """
+        # Start with meta-tables (always allowed)
+        allowed = ALLOWED_TABLES.copy()
+
+        # Query all entities from schema
+        try:
+            entities = db._schema_engine.list_entities()
+
+            for entity_name in entities:
+                entity_def = db._schema_engine.get_entity(entity_name)
+
+                # Add dedicated table name if entity is materialized
+                if entity_def.storage_mode == "dedicated" and entity_def.dedicated_table_name:
+                    allowed.add(entity_def.dedicated_table_name.lower())
+        except Exception:
+            # If schema query fails, fall back to static whitelist
+            # This ensures backward compatibility
+            pass
+
+        return allowed
 
     def validate(
         self,

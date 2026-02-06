@@ -312,8 +312,8 @@ class StorageMigration:
             )
 
         try:
-            # 1. Count records to migrate
-            total_records = self._table_manager.get_row_count(table_name)
+            # 1. Count records to migrate (only non-deleted records)
+            total_records = self._table_manager.get_row_count(table_name, include_deleted=False)
 
             if total_records == 0:
                 # No data, just update metadata and drop table

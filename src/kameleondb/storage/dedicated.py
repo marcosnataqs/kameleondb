@@ -322,15 +322,21 @@ class DedicatedTableManager:
                 )
                 return result.fetchone() is not None
 
-    def get_row_count(self, table_name: str) -> int:
+    def get_row_count(self, table_name: str, include_deleted: bool = True) -> int:
         """Get the number of rows in a table.
 
         Args:
             table_name: The table name
+            include_deleted: If False, only count non-deleted records (default True)
 
         Returns:
             Row count
         """
         with self._engine.connect() as conn:
-            result = conn.execute(text(f'SELECT COUNT(*) FROM "{table_name}"'))
+            if include_deleted:
+                result = conn.execute(text(f'SELECT COUNT(*) FROM "{table_name}"'))
+            else:
+                result = conn.execute(
+                    text(f'SELECT COUNT(*) FROM "{table_name}" WHERE is_deleted = false')
+                )
             return result.scalar() or 0
