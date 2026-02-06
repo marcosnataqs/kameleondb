@@ -2,6 +2,66 @@
 
 ## 2026-02
 
+### CLI Tool Implementation (2026-02-06)
+
+Complete command-line interface built with Typer and Rich. See [spec](../specs/004-cli-tool.md).
+
+**Modules:**
+
+- `cli/context.py` - Database connection management with lazy initialization
+- `cli/output.py` - Dual output mode (Rich tables for terminal, JSON for agents)
+- `cli/parsing.py` - Field syntax parser (`name:type:modifier`) and JSON/JSONL file readers
+- `cli/main.py` - Typer app with global options (`--database`, `--json`, `--echo`)
+
+**Command Groups:**
+
+- **schema** (6 commands):
+  - `list` - List all entities with Rich table output
+  - `describe` - Entity details with fields and relationships tables
+  - `create` - Create entities with inline fields or from JSON file
+  - `drop` - Soft delete with confirmation prompt
+  - `add-field` - Add fields using `name:type:modifier` syntax
+  - `context` - LLM-ready schema context for SQL generation
+
+- **data** (5 commands):
+  - `insert` - Insert records from inline JSON, JSON file, or JSONL batch
+  - `get` - Retrieve record by ID
+  - `update` - Update record with JSON patch
+  - `delete` - Soft delete record
+  - `list` - List records with pagination
+
+- **query** (2 commands):
+  - `run` - Execute validated SQL with read-only mode
+  - `validate` - Validate SQL without execution
+
+- **storage** (3 commands):
+  - `status` - Show storage mode and query stats
+  - `materialize` - Migrate to dedicated storage with progress bar
+  - `dematerialize` - Migrate back to shared storage
+
+- **admin** (3 commands):
+  - `init` - Initialize database with meta-tables
+  - `info` - Database connection and entity statistics
+  - `changelog` - Schema audit trail
+
+**Features:**
+
+- JSON file input for both schema and data operations
+- JSONL batch insert for bulk data loading
+- Rich formatting with colored tables and progress bars
+- JSON output mode for agent/script integration
+- Environment variable support (`KAMELEONDB_URL`)
+- Tab completion support (Typer built-in)
+- Audit trail support (`--created-by`, `--reason`)
+
+**Entry Point:**
+
+- `kameleondb` command installed via `pyproject.toml` script
+
+---
+
+## 2026-02
+
 ### Hybrid Storage Phase 2 - Dedicated Tables & Migration
 
 Implemented dedicated storage mode with bidirectional migration.

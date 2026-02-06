@@ -127,6 +127,58 @@ print(schema)
 # }
 ```
 
+## Command-Line Interface
+
+KameleonDB includes a powerful CLI for database management and agent development.
+
+```bash
+# Initialize a database
+kameleondb init
+
+# Create an entity
+kameleondb schema create Contact \
+  --field "name:string:required" \
+  --field "email:string:unique"
+
+# Insert data (inline JSON)
+kameleondb data insert Contact '{"name": "Alice", "email": "alice@example.com"}'
+
+# Insert from JSON file
+kameleondb data insert Contact --from-file contact.json
+
+# Batch insert from JSONL
+kameleondb data insert Contact --from-file contacts.jsonl --batch
+
+# List entities
+kameleondb schema list
+
+# Query with SQL
+kameleondb query run "SELECT * FROM kdb_records LIMIT 10"
+
+# Get schema context for LLM SQL generation
+kameleondb schema context
+
+# Check database info
+kameleondb info
+```
+
+**JSON Output Mode** (for agents and scripts):
+
+```bash
+# All commands support --json flag
+kameleondb --json schema list | jq .
+kameleondb --json data list Contact
+```
+
+**Available Commands:**
+- `schema` - Create, list, describe, modify entities
+- `data` - Insert, get, update, delete, list records
+- `query` - Execute and validate SQL
+- `storage` - Materialize entities, check storage mode
+- `admin` - Initialize, info, changelog
+
+See `kameleondb --help` for full command reference.
+
 ## Hybrid Storage
 
 KameleonDB supports two storage modes:

@@ -10,10 +10,10 @@ readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [
-    { name = "KameleonDB Contributors", email = "kameleondb@proton.me" }
+    { name = "KameleonDB Contributors" }
 ]
 maintainers = [
-    { name = "Marcos Natã", email = "marcos@kameleondb.io" }
+    { name = "Marcos Santos", email = "marcosnataqs@gmail.com" }
 ]
 keywords = [
     "database",
@@ -45,6 +45,8 @@ classifiers = [
 dependencies = [
     "sqlalchemy>=2.0",
     "pydantic>=2.0",
+    "typer>=0.21.0",
+    "rich>=14.3.0",
 ]
 
 [project.optional-dependencies]
@@ -71,6 +73,7 @@ all = [
 ]
 
 [project.scripts]
+kameleondb = "kameleondb.cli.main:main"
 kameleondb-mcp = "kameleondb.integrations.mcp.server:main"
 
 [project.urls]
@@ -102,7 +105,11 @@ select = [
 ignore = [
     "E501",   # line too long (handled by formatter)
     "B008",   # do not perform function calls in argument defaults
+    "B904",   # raise from exception (not needed for CLI error handling)
 ]
+
+[tool.ruff.lint.per-file-ignores]
+"src/kameleondb/cli/**/*.py" = ["E402", "ARG001"]  # CLI-specific patterns
 
 [tool.ruff.lint.isort]
 known-first-party = ["kameleondb"]
