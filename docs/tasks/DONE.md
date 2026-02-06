@@ -2,6 +2,52 @@
 
 ## 2026-02
 
+### Agent Hints Pattern Implementation (2026-02-06)
+
+Consolidated query execution to follow agent-first principle - all operations now return optimization hints inline. See [spec](../specs/005-agent-hints-pattern.md).
+
+**Changes:**
+
+- `core/engine.py`:
+  - Updated `execute_sql()` to always return `QueryExecutionResult` with metrics, suggestions, and warnings
+  - Removed `execute_sql_with_metrics()` method (functionality consolidated)
+  - Added `entity_name` and `created_by` parameters to `execute_sql()`
+
+- `integrations/mcp/server.py`:
+  - Updated `kameleondb_execute_sql` tool to return hints by default
+  - Removed `kameleondb_execute_sql_with_metrics` tool (redundant)
+  - All MCP queries now include performance metrics and optimization suggestions
+
+- `cli/commands/query.py`:
+  - Updated `query run` command to display metrics and hints
+  - Added `--entity` flag for better optimization hints
+  - Added `--metrics/--no-metrics` flag to control display
+  - Updated `query validate` to show warnings
+
+- Tests updated:
+  - `test_query_intelligence.py` - Updated to use consolidated `execute_sql()`
+  - `test_storage.py` - Updated to access `result.rows` instead of treating result as list
+
+- Documentation updated:
+  - README.md - Updated Query Intelligence section
+  - CHANGELOG.md - Added unreleased changes
+  - spec 002 - Noted consolidation
+  - spec 005 - Created comprehensive design document
+
+**Benefits:**
+
+- **Agent-First**: Agents get intelligence without needing special knowledge
+- **Simpler API**: One function instead of two
+- **Consistent Results**: All queries return same structure
+- **Progressive Discovery**: Hints guide agents to better patterns
+- **MCP Simplification**: One tool instead of two
+
+**Testing:**
+
+- 141/143 unit tests passing (2 PostgreSQL connection tests skipped)
+- All query intelligence tests passing
+- All storage tests passing
+
 ### CLI Tool Implementation (2026-02-06)
 
 Complete command-line interface built with Typer and Rich. See [spec](../specs/004-cli-tool.md).

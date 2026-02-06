@@ -27,14 +27,26 @@ def query_run(
         bool,
         typer.Option("--read-only/--write", help="Only allow SELECT queries"),
     ] = True,
+    entity_name: Annotated[
+        str | None,
+        typer.Option("--entity", "-e", help="Primary entity being queried (enables optimization hints)"),
+    ] = None,
+    show_metrics: Annotated[
+        bool,
+        typer.Option("--metrics/--no-metrics", help="Show performance metrics"),
+    ] = True,
 ) -> None:
-    """Execute a validated SQL query.
+    """Execute a validated SQL query with optimization hints.
+
+    Returns results with performance metrics and actionable optimization hints.
+    This follows the agent-first principle - all operations provide intelligence inline.
 
     Examples:
 
         kameleondb query run "SELECT * FROM kdb_records LIMIT 10"
-        kameleondb query run --file query.sql
+        kameleondb query run --file query.sql --entity Contact
         kameleondb query run "INSERT INTO ..." --write
+        kameleondb query run "SELECT ..." --no-metrics  # Hide metrics
     """
     cli_ctx: CLIContext = ctx.obj
     formatter = OutputFormatter(cli_ctx.json_output)
@@ -50,17 +62,52 @@ def query_run(
 
         # Execute query
         db = cli_ctx.get_db()
-        results = db.execute_sql(sql_content, read_only=read_only)
+        result = db.execute_sql(
+            sql_content,
+            read_only=read_only,
+            entity_name=entity_name,
+            created_by="cli",
+        )
 
         # Output results
         if cli_ctx.json_output:
-            formatter.print_data(results)
+            # JSON output includes everything
+            formatter.print_data({
+                "rows": result.rows,
+                "metrics": result.metrics.model_dump(),
+                "suggestions": [s.model_dump() for s in result.suggestions],
+                "warnings": result.warnings,
+            })
         else:
-            if results:
-                typer.echo(f"\nQuery returned {len(results)} rows:\n")
-                formatter.print_data(results)
+            # Human-readable output
+            if result.rows:
+                typer.echo(f"\nQuery returned {len(result.rows)} rows:\n")
+                formatter.print_data(result.rows)
             else:
                 typer.echo("Query executed successfully (no results)")
+
+            # Show metrics if requested
+            if show_metrics:
+                typer.echo(f"\n⏱️  Execution time: {result.metrics.execution_time_ms:.2f}ms")
+                if result.metrics.has_join:
+                    typer.echo("🔗 Query includes JOIN operations")
+
+            # Show optimization hints
+            if result.suggestions:
+                typer.echo("\n💡 Optimization Hints:")
+                for suggestion in result.suggestions:
+                    priority_emoji = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(
+                        suggestion.priority, "ℹ️"
+                    )
+                    typer.echo(f"  {priority_emoji} {suggestion.reason}")
+                    if suggestion.action:
+                        typer.echo(f"     Action: {suggestion.action}")
+
+            # Show warnings
+            if result.warnings:
+                typer.echo("\n⚠️  Warnings:")
+                for warning in result.warnings:
+                    typer.echo(f"  • {warning}")
 
     except Exception as e:
         formatter.print_error(e)
@@ -106,8 +153,14 @@ def query_validate(
         # Try to execute with read_only to validate
         # (QueryValidator will check before execution)
         try:
-            db.execute_sql(sql_content, read_only=True)
+            result = db.execute_sql(sql_content, read_only=True)
             formatter.print_success("Query is valid")
+
+            # Show warnings if any
+            if result.warnings:
+                typer.echo("\n⚠️  Warnings:")
+                for warning in result.warnings:
+                    typer.echo(f"  • {warning}")
         except Exception as validation_error:
             # If validation fails, show the error
             formatter.print_error(validation_error)

@@ -515,13 +515,17 @@ def kameleondb_get_schema_context(
 def kameleondb_execute_sql(
     sql: str,
     read_only: bool = True,
+    entity_name: str | None = None,
 ) -> str:
-    """Execute a SQL query with validation.
+    """Execute a SQL query with validation, metrics, and optimization hints.
 
     The query is validated before execution:
     - SELECT only (when read_only=true, the default)
     - Table access verified against KameleonDB tables
     - SQL injection patterns blocked
+
+    Returns results with performance metrics and actionable optimization hints.
+    This follows the agent-first principle - all operations provide intelligence inline.
 
     IMPORTANT: Use kameleondb_get_schema_context() first to understand
     the table structure and JSONB access patterns!
@@ -535,11 +539,15 @@ def kameleondb_execute_sql(
     Args:
         sql: SQL query to execute
         read_only: Only allow SELECT statements (default: true)
+        entity_name: Primary entity being queried (enables better optimization hints)
 
     Returns:
-        JSON with query results:
-        - On success: Array of result rows as objects
-        - On error: {"error": "error message", "validation_error": "..."}
+        JSON with:
+        - rows: Array of result rows as objects
+        - metrics: {execution_time_ms, row_count, has_join, query_type}
+        - suggestions: Array of optimization hints (e.g., materialize suggestions)
+        - warnings: Array of validation warnings
+        - error: Error message if query failed
 
     Example SQL for JSONB:
         SELECT id, data->>'name' as name, (data->>'total')::numeric as total
@@ -548,10 +556,43 @@ def kameleondb_execute_sql(
           AND data->>'status' = 'active'
           AND is_deleted = false
         LIMIT 50
+
+    Example result:
+        {
+            "rows": [...],
+            "metrics": {
+                "execution_time_ms": 45.2,
+                "row_count": 127,
+                "has_join": false,
+                "query_type": "SELECT"
+            },
+            "suggestions": [
+                {
+                    "entity_name": "Contact",
+                    "reason": "Query took 450ms (threshold: 100ms)",
+                    "action": "db.materialize_entity('Contact')",
+                    "priority": "high"
+                }
+            ]
+        }
     """
     try:
-        results = get_db().execute_sql(sql, read_only=read_only)
-        return json.dumps(results, default=str)
+        result = get_db().execute_sql(
+            sql=sql,
+            read_only=read_only,
+            entity_name=entity_name,
+            created_by="mcp",
+        )
+        # Result is QueryExecutionResult, convert to dict
+        return json.dumps(
+            {
+                "rows": result.rows,
+                "metrics": result.metrics.model_dump(),
+                "suggestions": [s.model_dump() for s in result.suggestions],
+                "warnings": result.warnings,
+            },
+            default=str,
+        )
     except Exception as e:
         return json.dumps({"error": str(e)})
 
@@ -641,68 +682,6 @@ def kameleondb_dematerialize_entity(
 # === Query Intelligence Tools (ADR-002: Query Metrics) ===
 
 
-@mcp.tool()
-def kameleondb_execute_sql_with_metrics(
-    sql: str,
-    read_only: bool = True,
-    entity_name: str | None = None,
-) -> str:
-    """Execute SQL with performance metrics and materialization suggestions.
-
-    Like kameleondb_execute_sql but returns additional performance data
-    and actionable suggestions for optimization (e.g., materialize entity
-    if queries are slow).
-
-    Args:
-        sql: SQL query to execute
-        read_only: Only allow SELECT (default: true)
-        entity_name: Primary entity being queried (for better metrics)
-
-    Returns:
-        JSON with:
-        - rows: Array of result rows
-        - metrics: {execution_time_ms, row_count, has_join, query_type}
-        - suggestions: Array of optimization suggestions
-        - warnings: Array of validation warnings
-
-    Example result:
-        {
-            "rows": [...],
-            "metrics": {
-                "execution_time_ms": 450.2,
-                "row_count": 1247,
-                "has_join": true,
-                "query_type": "SELECT"
-            },
-            "suggestions": [
-                {
-                    "entity_name": "Contact",
-                    "reason": "Query took 450ms (threshold: 100ms)",
-                    "action": "db.materialize_entity('Contact')",
-                    "priority": "high"
-                }
-            ]
-        }
-    """
-    try:
-        result = get_db().execute_sql_with_metrics(
-            sql=sql,
-            read_only=read_only,
-            entity_name=entity_name,
-            created_by="mcp",
-        )
-        # Result is QueryExecutionResult, convert to dict
-        return json.dumps(
-            {
-                "rows": result.rows,
-                "metrics": result.metrics.model_dump(),
-                "suggestions": [s.model_dump() for s in result.suggestions],
-                "warnings": result.warnings,
-            },
-            default=str,
-        )
-    except Exception as e:
-        return json.dumps({"error": str(e)})
 
 
 @mcp.tool()

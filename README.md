@@ -227,29 +227,39 @@ print(f"Migrated {result['records_migrated']} records to {result['table_name']}"
 # Queries with JOINs will be faster
 ```
 
-### Query Intelligence
+### Query Intelligence (Agent Hints Pattern)
 
-KameleonDB tracks query performance and suggests when to materialize:
+**Agent-First Principle**: All query operations return performance metrics and optimization hints inline. Agents don't need to know about special "with_metrics" functions - intelligence is always included.
 
 ```python
-# Execute query with metrics
-result = db.execute_sql_with_metrics("""
+# Execute SQL - always returns metrics and hints
+result = db.execute_sql("""
     SELECT o.id, o.data->>'total' as total, c.data->>'name' as customer
     FROM kdb_records o
     JOIN kdb_records c ON c.id::text = o.data->>'customer_id'
     WHERE o.entity_id = '...'
 """, entity_name="Order")
 
-# Check suggestions
-for suggestion in result.suggestions:
-    print(f"{suggestion.reason} - {suggestion.action}")
-    # Example: "Query took 450ms (threshold: 100ms) - db.materialize_entity('Customer')"
+# Access query results
+print(f"Found {len(result.rows)} orders")
 
-# Get historical stats
+# Check performance metrics (always included)
+print(f"Query took {result.metrics.execution_time_ms}ms")
+
+# Check optimization hints (always included)
+for suggestion in result.suggestions:
+    print(f"{suggestion.priority}: {suggestion.reason}")
+    print(f"Action: {suggestion.action}")
+    # Example: "high: Query took 450ms (threshold: 100ms)"
+    #          "Action: db.materialize_entity('Order')"
+
+# Get historical stats for deeper analysis
 stats = db.get_entity_stats("Customer")
 if stats.suggestion:
-    print(f"Recommendation: {stats.suggestion}")
+    print(f"Historical pattern: {stats.suggestion}")
 ```
+
+**Why this matters for agents**: All operations proactively provide actionable intelligence. No need to know about special "metrics" functions - hints are always included. This follows the agent-first principle - the database helps agents self-optimize.
 
 ## Agent Integration
 

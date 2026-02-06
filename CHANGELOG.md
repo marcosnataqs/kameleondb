@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+**Agent Hints Pattern (Spec 005)**
+- `execute_sql()` now always returns `QueryExecutionResult` with metrics and optimization hints
+- Follows agent-first principle: all operations provide intelligence inline
+- No need to choose between `execute_sql()` and `execute_sql_with_metrics()`
+- MCP tool `kameleondb_execute_sql` now returns hints by default
+- CLI `query run` command shows metrics and hints automatically
+
+### Removed
+
+- `execute_sql_with_metrics()` method (consolidated into `execute_sql()`)
+- `kameleondb_execute_sql_with_metrics` MCP tool (functionality merged into `kameleondb_execute_sql`)
+
 ## [0.1.0] - 2026-02-05
 
 ### Added

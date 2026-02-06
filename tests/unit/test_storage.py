@@ -293,10 +293,10 @@ class TestKameleonDBMaterialization:
         # Execute SQL query on dedicated table (use typed columns)
         result = memory_db.execute_sql("SELECT * FROM kdb_product WHERE price > 10.0")
 
-        assert len(result) == 1
+        assert len(result.rows) == 1
         # Access typed columns directly
-        assert result[0]["name"] == "Widget"
-        assert result[0]["price"] == 19.99
+        assert result.rows[0]["name"] == "Widget"
+        assert result.rows[0]["price"] == 19.99
 
     def test_migration_counter_excludes_deleted_records(self, memory_db: KameleonDB) -> None:
         """Test that migration counter only counts non-deleted records."""
@@ -375,5 +375,5 @@ class TestKameleonDBMaterialization:
         """
         )
 
-        assert len(result) == 1
-        assert result[0]["property_address"] == "123 Main St"
+        assert len(result.rows) == 1
+        assert result.rows[0]["property_address"] == "123 Main St"

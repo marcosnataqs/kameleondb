@@ -225,8 +225,8 @@ class TestMetricsCollector:
 class TestKameleonDBQueryIntelligence:
     """Test KameleonDB query intelligence integration."""
 
-    def test_execute_sql_with_metrics(self, memory_db: KameleonDB) -> None:
-        """Test executing SQL with metrics."""
+    def test_execute_sql_returns_metrics_and_hints(self, memory_db: KameleonDB) -> None:
+        """Test executing SQL with metrics and hints (agent-first pattern)."""
         # Create entity and insert data
         entity = memory_db.create_entity("TestEntity", fields=[{"name": "name", "type": "string"}])
         entity.insert({"name": "Test 1"})
@@ -235,15 +235,20 @@ class TestKameleonDBQueryIntelligence:
         # Get entity_id for query
         entity_def = memory_db._schema_engine.get_entity("TestEntity")
 
-        result = memory_db.execute_sql_with_metrics(
+        # execute_sql now always returns QueryExecutionResult with metrics
+        result = memory_db.execute_sql(
             f"SELECT * FROM kdb_records WHERE entity_id = '{entity_def.id}'",
             entity_name="TestEntity",
+            created_by="test",
         )
 
         assert len(result.rows) == 2
         assert result.metrics.row_count == 2
         assert result.metrics.execution_time_ms > 0
         assert result.metrics.query_type == "SELECT"
+
+        # Result should have suggestions list (may be empty)
+        assert isinstance(result.suggestions, list)
 
     def test_get_entity_stats(self, memory_db: KameleonDB) -> None:
         """Test getting entity stats through main API."""

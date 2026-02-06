@@ -834,13 +834,18 @@ class KameleonDB:
         self,
         sql: str,
         read_only: bool = True,
-    ) -> list[dict[str, Any]]:
-        """Execute a validated SQL query.
+        entity_name: str | None = None,
+        created_by: str | None = None,
+    ) -> Any:
+        """Execute a validated SQL query with metrics and optimization hints.
 
         The query is validated before execution:
         - SELECT only (when read_only=True)
         - Table access verified against KameleonDB tables
         - SQL injection patterns blocked
+
+        Returns results with performance metrics and actionable optimization hints.
+        This is the agent-first design - all operations provide intelligence inline.
 
         Use get_schema_context() first to understand the table structure
         and JSONB access patterns.
@@ -848,9 +853,15 @@ class KameleonDB:
         Args:
             sql: SQL query to execute
             read_only: If True, only SELECT statements allowed (default True)
+            entity_name: Primary entity being queried (enables better hints)
+            created_by: Agent/user identifier (for metrics tracking)
 
         Returns:
-            List of result rows as dicts
+            QueryExecutionResult with:
+            - rows: Query results as list of dicts
+            - metrics: Performance data (execution time, row count, etc.)
+            - suggestions: Optimization hints (e.g., materialization suggestions)
+            - warnings: Validation warnings
 
         Raises:
             QueryError: If validation fails or execution fails
@@ -865,69 +876,10 @@ class KameleonDB:
             ...       AND is_deleted = false
             ...     LIMIT 10
             ... '''
-            >>> results = db.execute_sql(sql)
-        """
-        from sqlalchemy import text
-
-        from kameleondb.exceptions import QueryError
-        from kameleondb.query.validator import QueryValidator
-
-        # Validate the query
-        validator = QueryValidator(db=self)
-        result = validator.validate(sql, read_only=read_only)
-
-        if not result.valid:
-            raise QueryError(f"Query validation failed: {result.error}")
-
-        # Log warnings (but don't fail)
-        for _warning in result.warnings:
-            # TODO: Add proper logging
-            pass
-
-        # Execute the validated query
-        try:
-            with self._connection.engine.connect() as conn:
-                query_result = conn.execute(text(result.sql))
-                rows = query_result.fetchall()
-                columns = query_result.keys()
-
-                # Convert to list of dicts
-                return [dict(zip(columns, row, strict=True)) for row in rows]
-        except Exception as e:
-            raise QueryError(f"Query execution failed: {e}") from e
-
-    def execute_sql_with_metrics(
-        self,
-        sql: str,
-        read_only: bool = True,
-        entity_name: str | None = None,
-        created_by: str | None = None,
-    ) -> Any:
-        """Execute a validated SQL query with metrics tracking.
-
-        Returns results along with execution metrics and materialization
-        suggestions. Use this for intelligent query monitoring.
-
-        Args:
-            sql: SQL query to execute
-            read_only: If True, only SELECT statements allowed (default True)
-            entity_name: Primary entity being queried (for metrics)
-            created_by: Agent/user identifier (for metrics)
-
-        Returns:
-            QueryExecutionResult with rows, metrics, and suggestions
-
-        Raises:
-            QueryError: If validation fails or execution fails
-
-        Example:
-            >>> result = db.execute_sql_with_metrics(
-            ...     "SELECT * FROM kdb_records WHERE entity_id = '...'",
-            ...     entity_name="Contact"
-            ... )
-            >>> print(f"Returned {result.metrics.row_count} rows in {result.metrics.execution_time_ms}ms")
+            >>> result = db.execute_sql(sql, entity_name="Contact")
+            >>> print(f"Returned {len(result.rows)} rows in {result.metrics.execution_time_ms}ms")
             >>> if result.suggestions:
-            ...     print(f"Suggestion: {result.suggestions[0].reason}")
+            ...     print(f"Hint: {result.suggestions[0].reason}")
         """
         import time
 
@@ -966,17 +918,18 @@ class KameleonDB:
             query_type=validation.query_type.value if validation.query_type else "UNKNOWN",
         )
 
-        # Record metrics
-        self._metrics_collector.record_query(
-            metrics=metrics,
-            entity_name=entity_name,
-            tables_accessed=list(validation.tables_accessed)
-            if validation.tables_accessed
-            else None,
-            created_by=created_by,
-        )
+        # Record metrics (if enabled)
+        if self._metrics_collector.enabled:
+            self._metrics_collector.record_query(
+                metrics=metrics,
+                entity_name=entity_name,
+                tables_accessed=list(validation.tables_accessed)
+                if validation.tables_accessed
+                else None,
+                created_by=created_by,
+            )
 
-        # Generate suggestions
+        # Generate suggestions (agent hints)
         suggestions = []
         if entity_name:
             # Get entity info for storage mode
@@ -995,6 +948,7 @@ class KameleonDB:
             suggestions=suggestions,
             warnings=validation.warnings,
         )
+
 
     def get_entity_stats(self, entity_name: str) -> Any:
         """Get aggregated statistics for an entity.

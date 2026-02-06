@@ -1,6 +1,10 @@
 # Query Intelligence - Progressive Materialization
 
+**Status:** Implemented (v0.1.0), Extended by [Spec 005 - Agent Hints Pattern](005-agent-hints-pattern.md)
+
 Intelligent query monitoring that tracks execution metrics and suggests materialization when performance thresholds are exceeded.
+
+**Note:** As of Spec 005, the separate `execute_sql_with_metrics()` method has been consolidated into `execute_sql()`, which now always returns metrics and hints. The core concepts below still apply.
 
 ## Core Concept
 
@@ -26,21 +30,19 @@ Agent Query → Execute → Measure → Track Pattern → Return Result + Sugges
 ### Query with Metrics
 
 ```python
-# Standard query (backward compatible)
-rows = db.execute_sql("SELECT ...")  # Returns list[dict]
-
-# Query with metrics and suggestions
-result = db.execute_sql_with_metrics("""
+# All SQL queries now return metrics and suggestions (Agent Hints Pattern)
+result = db.execute_sql("""
     SELECT o.id, o.data->>'total' as total, c.data->>'name' as customer
     FROM kdb_records o
     JOIN kdb_records c ON c.id::text = o.data->>'customer_id'
     WHERE o.entity_id = '...'
-""")
+""", entity_name="Order")
 
-# Result structure
+# Result structure (QueryExecutionResult)
 result.rows        # list[dict] - the actual data
 result.metrics     # QueryMetrics - execution time, row count, etc.
 result.suggestions # list[MaterializationSuggestion] - actionable suggestions
+result.warnings    # list[str] - validation warnings
 ```
 
 ### Handling Suggestions
