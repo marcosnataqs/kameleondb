@@ -556,6 +556,190 @@ def kameleondb_execute_sql(
         return json.dumps({"error": str(e)})
 
 
+# === Storage Management Tools (ADR-001: Hybrid Storage Phase 2) ===
+
+
+@mcp.tool()
+def kameleondb_materialize_entity(
+    entity_name: str,
+    batch_size: int = 1000,
+    reason: str | None = None,
+) -> str:
+    """Migrate an entity from shared to dedicated storage.
+
+    Creates a dedicated table with foreign key constraints for better
+    relational integrity and JOIN performance.
+
+    Args:
+        entity_name: Name of entity to materialize
+        batch_size: Records per batch (default 1000, larger for big tables)
+        reason: Why materializing (for audit trail)
+
+    Returns:
+        JSON with migration result:
+        - success: bool
+        - entity_name: str
+        - records_migrated: int
+        - table_name: str (e.g., "kdb_contact")
+        - duration_seconds: float
+        - error: str (if failed)
+
+    Example:
+        kameleondb_materialize_entity(
+            entity_name="Contact",
+            reason="Adding foreign key constraints for Order relationships"
+        )
+    """
+    try:
+        result = get_db().materialize_entity(
+            name=entity_name,
+            batch_size=batch_size,
+            created_by="mcp",
+            reason=reason,
+        )
+        return json.dumps(result, default=str)
+    except Exception as e:
+        return json.dumps({"success": False, "error": str(e)})
+
+
+@mcp.tool()
+def kameleondb_dematerialize_entity(
+    entity_name: str,
+    batch_size: int = 1000,
+    reason: str | None = None,
+) -> str:
+    """Migrate an entity from dedicated back to shared storage.
+
+    Moves data back to kdb_records table and drops the dedicated table.
+    Useful when foreign key constraints are no longer needed.
+
+    Args:
+        entity_name: Name of entity to dematerialize
+        batch_size: Records per batch (default 1000)
+        reason: Why dematerializing (for audit trail)
+
+    Returns:
+        JSON with migration result:
+        - success: bool
+        - entity_name: str
+        - records_migrated: int
+        - duration_seconds: float
+        - error: str (if failed)
+    """
+    try:
+        result = get_db().dematerialize_entity(
+            name=entity_name,
+            batch_size=batch_size,
+            created_by="mcp",
+            reason=reason,
+        )
+        return json.dumps(result, default=str)
+    except Exception as e:
+        return json.dumps({"success": False, "error": str(e)})
+
+
+# === Query Intelligence Tools (ADR-002: Query Metrics) ===
+
+
+@mcp.tool()
+def kameleondb_execute_sql_with_metrics(
+    sql: str,
+    read_only: bool = True,
+    entity_name: str | None = None,
+) -> str:
+    """Execute SQL with performance metrics and materialization suggestions.
+
+    Like kameleondb_execute_sql but returns additional performance data
+    and actionable suggestions for optimization (e.g., materialize entity
+    if queries are slow).
+
+    Args:
+        sql: SQL query to execute
+        read_only: Only allow SELECT (default: true)
+        entity_name: Primary entity being queried (for better metrics)
+
+    Returns:
+        JSON with:
+        - rows: Array of result rows
+        - metrics: {execution_time_ms, row_count, has_join, query_type}
+        - suggestions: Array of optimization suggestions
+        - warnings: Array of validation warnings
+
+    Example result:
+        {
+            "rows": [...],
+            "metrics": {
+                "execution_time_ms": 450.2,
+                "row_count": 1247,
+                "has_join": true,
+                "query_type": "SELECT"
+            },
+            "suggestions": [
+                {
+                    "entity_name": "Contact",
+                    "reason": "Query took 450ms (threshold: 100ms)",
+                    "action": "db.materialize_entity('Contact')",
+                    "priority": "high"
+                }
+            ]
+        }
+    """
+    try:
+        result = get_db().execute_sql_with_metrics(
+            sql=sql,
+            read_only=read_only,
+            entity_name=entity_name,
+            created_by="mcp",
+        )
+        # Result is QueryExecutionResult, convert to dict
+        return json.dumps(
+            {
+                "rows": result.rows,
+                "metrics": result.metrics.model_dump(),
+                "suggestions": [s.model_dump() for s in result.suggestions],
+                "warnings": result.warnings,
+            },
+            default=str,
+        )
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def kameleondb_get_entity_stats(
+    entity_name: str,
+) -> str:
+    """Get aggregated statistics for an entity.
+
+    Returns query performance metrics and patterns to help decide
+    whether to materialize an entity to dedicated storage.
+
+    Args:
+        entity_name: Entity to get stats for
+
+    Returns:
+        JSON with:
+        - entity_name: str
+        - total_queries: int (lifetime query count)
+        - avg_execution_time_ms: float
+        - max_execution_time_ms: float
+        - total_rows_returned: int
+        - join_count_24h: int (joins in last 24 hours)
+        - storage_mode: "shared" or "dedicated"
+        - record_count: int (current records)
+        - suggestion: str (materialization recommendation, if any)
+
+    Example:
+        stats = kameleondb_get_entity_stats("Contact")
+        # If stats.suggestion exists, consider materialization
+    """
+    try:
+        stats = get_db().get_entity_stats(entity_name)
+        return json.dumps(stats.model_dump(), default=str)
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
 def create_server(database_url: str, echo: bool = False) -> FastMCP:
     """Create and configure the MCP server with a database connection.
 

@@ -127,6 +127,78 @@ print(schema)
 # }
 ```
 
+## Hybrid Storage
+
+KameleonDB supports two storage modes:
+
+- **Shared storage** (default): All entities store records in the `kdb_records` JSONB table. Maximum flexibility, zero DDL for schema changes.
+- **Dedicated storage**: Each entity gets its own table with typed columns and foreign key constraints. Enables database-enforced referential integrity and optimized JOINs.
+
+### When to Use Dedicated Storage
+
+Materialize an entity to dedicated storage when:
+- You need foreign key constraints for data integrity
+- Queries frequently JOIN this entity with others
+- Query performance is slow (>100ms) and the entity has many records (>10k)
+
+### Materialization Example
+
+```python
+from kameleondb import KameleonDB
+
+db = KameleonDB("postgresql://localhost/mydb")
+
+# Create entities with relationships
+db.create_entity("Customer", fields=[
+    {"name": "name", "type": "string"},
+    {"name": "email", "type": "string", "unique": True},
+])
+
+db.create_entity("Order", fields=[
+    {"name": "total", "type": "float"},
+    {"name": "status", "type": "string"},
+])
+
+# Add relationship (stored as metadata initially)
+orders = db.entity("Order")
+orders.add_relationship(
+    name="customer",
+    target="Customer",
+    relationship_type="many_to_one",
+)
+
+# Later, materialize for FK constraints and better JOIN performance
+result = db.materialize_entity("Customer", reason="Enabling FK constraints")
+print(f"Migrated {result['records_migrated']} records to {result['table_name']}")
+
+# Now foreign key constraints are enforced at database level
+# Queries with JOINs will be faster
+```
+
+### Query Intelligence
+
+KameleonDB tracks query performance and suggests when to materialize:
+
+```python
+# Execute query with metrics
+result = db.execute_sql_with_metrics("""
+    SELECT o.id, o.data->>'total' as total, c.data->>'name' as customer
+    FROM kdb_records o
+    JOIN kdb_records c ON c.id::text = o.data->>'customer_id'
+    WHERE o.entity_id = '...'
+""", entity_name="Order")
+
+# Check suggestions
+for suggestion in result.suggestions:
+    print(f"{suggestion.reason} - {suggestion.action}")
+    # Example: "Query took 450ms (threshold: 100ms) - db.materialize_entity('Customer')"
+
+# Get historical stats
+stats = db.get_entity_stats("Customer")
+if stats.suggestion:
+    print(f"Recommendation: {stats.suggestion}")
+```
+
 ## Agent Integration
 
 KameleonDB is designed for AI agents. All operations are tool-friendly:
@@ -191,6 +263,8 @@ All types are stored in JSON and cast when querying:
 | json | `data->'field'` | `json_extract(data, '$.field')` |
 | uuid | `(data->>'field')::uuid` | `json_extract(data, '$.field')` |
 
+> **Note**: In dedicated storage mode, these types map to native PostgreSQL/SQLite column types with proper constraints. In shared storage mode (default), all values are stored in JSONB/JSON and cast when querying.
+
 **PostgreSQL Operators**:
 - `data->>'field'` - Extract as text
 - `data @> '{"field": "value"}'` - Containment (uses GIN index)
@@ -225,15 +299,18 @@ pre-commit run --all-files
 ## Roadmap
 
 - **v0.1**: Core schema engine ✅
-- **v0.2**: Relationships + LLM query support ✅
+- **v0.2**: Relationships + Hybrid Storage + Query Intelligence ✅
   - Relationship metadata (many-to-one, one-to-many, many-to-many)
   - Schema context for SQL generation
   - Query validation and execution
   - SQLite support
-- **v0.3**: Dedicated storage + relational queries (planned)
-  - Per-entity tables with FK constraints
+  - Hybrid storage (shared/dedicated modes)
+  - Storage migration (materialize/dematerialize)
+  - Query metrics and materialization suggestions
+- **v0.3**: Relational queries + Many-to-many (planned)
   - Cross-entity queries with JOINs
   - Cascading operations
+  - Many-to-many junction tables
 - **v0.4**: Natural language queries (planned)
   - LLM-powered query generation
   - Query caching and optimization

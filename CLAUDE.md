@@ -83,6 +83,9 @@ The system uses two layers of tables:
 - **`data/table_manager.py`** - `TableManager` ensures JSONB tables exist (no DDL for schema changes)
 - **`data/jsonb_query.py`** - `JSONBQuery` handles CRUD operations using PostgreSQL JSONB operators
 - **`tools/registry.py`** - `ToolRegistry` exports operations as agent tools (OpenAI/Anthropic format)
+- **`storage/dedicated.py`** - `DedicatedTableManager` handles dedicated table DDL
+- **`storage/migration.py`** - `StorageMigration` migrates data between storage modes
+- **`query/metrics.py`** - `MetricsCollector` tracks query performance for optimization
 
 ### Data Flow
 
@@ -99,6 +102,36 @@ The system uses two layers of tables:
    - `SchemaContextBuilder` provides schema info for LLM SQL generation
    - `QueryValidator` validates SQL before execution (injection protection)
    - Uses JSONB queries: `WHERE data->>'name' = 'John'`
+
+### Hybrid Storage Architecture
+
+KameleonDB supports two storage modes for entities:
+
+**Shared Mode (Default):**
+- All entities store records in single `kdb_records` table
+- All field values in JSONB `data` column
+- Maximum flexibility, zero DDL for schema changes
+- Best for: Rapidly evolving schemas, agent experimentation
+
+**Dedicated Mode:**
+- Entity gets own table (e.g., `kdb_contact`)
+- Typed columns for each field
+- Foreign key constraints at database level
+- Best for: Stable schemas needing referential integrity
+
+**Key Components:**
+- `storage/dedicated.py` - `DedicatedTableManager` creates/drops dedicated tables
+- `storage/migration.py` - `StorageMigration` handles bidirectional data migration
+- `query/metrics.py` - `MetricsCollector` tracks performance and suggests materialization
+- `core/engine.py` - `materialize_entity()` and `dematerialize_entity()` methods
+
+**Migration Flow:**
+1. Entity starts in shared mode (metadata in `kdb_entity_definitions`)
+2. Agent calls `db.materialize_entity("Contact")`
+3. `DedicatedTableManager` creates `kdb_contact` table with typed columns
+4. `StorageMigration` migrates data in batches (default 1000 records)
+5. `storage_mode` updated to "dedicated" in metadata
+6. Future queries route to dedicated table automatically
 
 ### Agent-First Design
 
