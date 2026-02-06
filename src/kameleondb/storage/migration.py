@@ -6,6 +6,7 @@ with transaction safety, batching, and progress callbacks.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -182,6 +183,9 @@ class StorageMigration:
                         break
 
                     # Build INSERT values
+                    # Track which fields are JSON type for serialization
+                    json_fields = {f.column_name for f in active_fields if f.field_type == "json"}
+                    
                     for record in records:
                         values = {
                             "id": record.id,
@@ -192,9 +196,11 @@ class StorageMigration:
                         }
                         # Extract field values from JSONB data
                         for field in active_fields:
-                            values[field.column_name] = (
-                                record.data.get(field.column_name) if record.data else None
-                            )
+                            value = record.data.get(field.column_name) if record.data else None
+                            # Serialize JSON fields to string for SQLite compatibility
+                            if field.column_name in json_fields and value is not None:
+                                value = json.dumps(value)
+                            values[field.column_name] = value
 
                         # Insert into dedicated table
                         columns_str = ", ".join(f'"{c}"' for c in all_columns)
