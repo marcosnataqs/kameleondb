@@ -22,8 +22,6 @@ from sqlalchemy import (
     Text,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.types import JSON
 
 from kameleondb.schema.models import (
     EntityDefinition,

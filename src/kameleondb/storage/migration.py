@@ -185,7 +185,7 @@ class StorageMigration:
                     # Build INSERT values
                     # Track which fields are JSON type for serialization
                     json_fields = {f.column_name for f in active_fields if f.field_type == "json"}
-                    
+
                     for record in records:
                         values = {
                             "id": record.id,
