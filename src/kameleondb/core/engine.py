@@ -949,7 +949,6 @@ class KameleonDB:
             warnings=validation.warnings,
         )
 
-
     def get_entity_stats(self, entity_name: str) -> Any:
         """Get aggregated statistics for an entity.
 
