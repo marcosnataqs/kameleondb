@@ -1,0 +1,5 @@
+{"first_name":"Alice","last_name":"Johnson","email":"alice@acme.com","phone":"+1-555-0101","company_id":"acme-corp","role":"Engineering Manager","tags":["vip","technical"],"linkedin_url":"https://linkedin.com/in/alicejohnson"}
+{"first_name":"Bob","last_name":"Smith","email":"bob@techcorp.com","phone":"+1-555-0102","company_id":"tech-corp","role":"Product Manager","tags":["decision-maker"],"linkedin_url":"https://linkedin.com/in/bobsmith"}
+{"first_name":"Carol","last_name":"White","email":"carol@startup.io","phone":"+1-555-0103","company_id":"startup-io","role":"CTO","tags":["vip","technical","decision-maker"],"linkedin_url":"https://linkedin.com/in/carolwhite"}
+{"first_name":"David","last_name":"Brown","email":"david@enterprise.com","phone":"+1-555-0104","company_id":"enterprise-inc","role":"Senior Developer","tags":["technical"]}
+{"first_name":"Eve","last_name":"Davis","email":"eve@consulting.com","phone":"+1-555-0105","company_id":"consulting-llc","role":"Consultant","tags":["consultant","technical"]}

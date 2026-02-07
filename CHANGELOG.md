@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-02-07
+
+### Fixed
+
+**CLI Bug Fixes**
+- Fixed `data list` command: properly access `.rows` attribute of `QueryExecutionResult` object
+- Fixed `admin info` command: properly access `.rows` attribute when counting records
+- Both commands now correctly handle the QueryExecutionResult object returned by `execute_sql()`
+
+### Added
+
+**OpenClaw Integration**
+- Added OpenClaw skill in `openclaw-skill/` directory for OpenClaw agent framework
+- Includes comprehensive SKILL.md with agent-centric use cases
+- Examples: schema evolution workflow, contact tracking, batch imports
+- Ready for ClawHub deployment
+- Gating configuration for environment validation (KAMELEONDB_URL, kameleondb binary)
+
 ### Changed
 
 **Agent Hints Pattern (Spec 005)**
@@ -96,5 +114,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Python 3.12
 - Python 3.13
 
-[Unreleased]: https://github.com/marcosnataqs/kameleondb/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/marcosnataqs/kameleondb/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/marcosnataqs/kameleondb/compare/v0.1.0...v0.1.2
 [0.1.0]: https://github.com/marcosnataqs/kameleondb/releases/tag/v0.1.0

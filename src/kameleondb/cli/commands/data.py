@@ -237,10 +237,10 @@ def data_list(
         entity_id_query = f"SELECT id FROM kdb_entity_definitions WHERE name = '{entity_name}'"
         entity_id_result = db.execute_sql(entity_id_query, read_only=True)
 
-        if not entity_id_result:
+        if not entity_id_result.rows:
             raise Exception(f"Entity not found: {entity_name}")
 
-        entity_id = entity_id_result[0]["id"]
+        entity_id = entity_id_result.rows[0]["id"]
 
         # Query records
         sql = f"""
@@ -250,7 +250,8 @@ def data_list(
             ORDER BY created_at DESC
             LIMIT {limit} OFFSET {offset}
         """
-        records = db.execute_sql(sql, read_only=True)
+        result = db.execute_sql(sql, read_only=True)
+        records = result.rows
 
         if cli_ctx.json_output:
             formatter.print_data(records)

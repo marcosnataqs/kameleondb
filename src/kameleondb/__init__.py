@@ -85,7 +85,7 @@ try:
 
     __version__ = version("kameleondb")
 except Exception:
-    __version__ = "0.1.1"  # Fallback for development
+    __version__ = "0.1.2"  # Fallback for development
 
 __all__ = [
     # Main classes

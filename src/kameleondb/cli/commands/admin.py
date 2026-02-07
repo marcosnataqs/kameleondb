@@ -75,7 +75,7 @@ def info(
             WHERE is_deleted = FALSE
         """
         result = db.execute_sql(total_records_query, read_only=True)
-        total_records = result[0]["count"] if result else 0
+        total_records = result.rows[0]["count"] if result.rows else 0
 
         # Get dialect
         dialect = db._connection.dialect
