@@ -1,9 +1,11 @@
 <p align="center">
   <img src="https://raw.githubusercontent.com/marcosnataqs/kameleondb/main/assets/kameleondb-logo.png" alt="KameleonDB Logo" width="350"/>
   <p align="center">
-  <a href="https://pypi.org/project/kameleondb/"><img src="https://badge.fury.io/py/kameleondb.svg" alt="PyPI version"></a>
+  <a href="https://pypi.org/project/kameleondb/"><img src="https://img.shields.io/pypi/v/kameleondb?color=blue" alt="PyPI version"></a>
+  <a href="https://github.com/marcosnataqs/kameleondb/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/marcosnataqs/kameleondb/ci.yml?branch=main&label=tests" alt="Tests"></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python 3.11+"></a>
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
+  <a href="https://github.com/marcosnataqs/kameleondb"><img src="https://img.shields.io/github/stars/marcosnataqs/kameleondb?style=social" alt="GitHub stars"></a>
   </p>
 </p>
 
