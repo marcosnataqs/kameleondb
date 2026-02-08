@@ -57,6 +57,14 @@ KameleonDB is available as an [OpenClaw](https://openclaw.ai) skill for seamless
 clawhub install kameleondb
 ```
 
+**What OpenClaw Agents Can Do:**
+- 🧠 **Remember information** across conversations (contacts, tasks, notes)
+- 🔗 **Track entities and relationships** without planning schemas upfront
+- 📚 **Build knowledge bases** that evolve as they learn
+- 🌐 **Ingest external data** (APIs, web scraping, CSVs)
+- 📊 **Query with SQL** using schema context for LLM-generated queries
+- ⚡ **Self-optimize** with performance hints and materialization
+
 See [`openclaw-skill/SKILL.md`](openclaw-skill/SKILL.md) for full usage guide.
 
 ## Installation
