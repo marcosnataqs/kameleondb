@@ -49,6 +49,24 @@ See [FIRST-PRINCIPLES.md](FIRST-PRINCIPLES.md) for detailed explanations and [AG
 - **Audit Trail**: Track who made schema changes and why
 - **Zero-Lock Evolution**: Schema changes are metadata-only, no table locks
 
+## OpenClaw Integration
+
+KameleonDB is available as an [OpenClaw](https://openclaw.ai) skill for seamless agent integration.
+
+```bash
+clawhub install kameleondb
+```
+
+**What OpenClaw Agents Can Do:**
+- 🧠 **Remember information** across conversations (contacts, tasks, notes)
+- 🔗 **Track entities and relationships** without planning schemas upfront
+- 📚 **Build knowledge bases** that evolve as they learn
+- 🌐 **Ingest external data** (APIs, web scraping, CSVs)
+- 📊 **Query with SQL** using schema context for LLM-generated queries
+- ⚡ **Self-optimize** with performance hints and materialization
+
+See [`openclaw-skill/SKILL.md`](openclaw-skill/SKILL.md) for full usage guide.
+
 ## Installation
 
 ```bash
@@ -234,45 +252,6 @@ tools = db.get_tools()
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for technical details.
-
-## Agent Framework Integrations
-
-### OpenClaw Skill
-
-KameleonDB is available as an [OpenClaw](https://openclaw.ai) skill for seamless integration with OpenClaw agents. OpenClaw is an open-source agent framework that bridges messaging apps to AI agents with 700+ community skills.
-
-**Installation:**
-```bash
-# Install KameleonDB
-pip install kameleondb
-
-# Set database URL
-export KAMELEONDB_URL="sqlite:///./kameleondb.db"
-
-# Initialize
-kameleondb admin init
-
-# Copy skill to OpenClaw (or install from ClawHub)
-cp -r openclaw-skill ~/.openclaw/skills/kameleondb
-```
-
-**What OpenClaw Agents Can Do:**
-- 🧠 **Remember information** across conversations (contacts, tasks, notes)
-- 🔗 **Track entities and relationships** without planning schemas upfront
-- 📚 **Build knowledge bases** that evolve as they learn
-- 🌐 **Ingest external data** (APIs, web scraping, CSVs)
-- 📊 **Query with SQL** using schema context for LLM-generated queries
-- ⚡ **Self-optimize** with performance hints and materialization
-
-**Key Features for Agents:**
-- **Schema-on-Reason**: Start storing data immediately, add fields as you discover them
-- **Agent Hints Pattern**: Query results include optimization suggestions with exact commands
-- **Audit Trail**: Every schema change records why the agent made it
-- **Zero Migrations**: Old records don't break when adding new fields
-
-The skill provides the full CLI via `--json` flag, optimized for agent consumption. See [`openclaw-skill/SKILL.md`](openclaw-skill/SKILL.md) for usage examples and workflows.
-
-**Coming Soon**: ClawHub listing for one-click installation 🦎
 
 ## Development
 
