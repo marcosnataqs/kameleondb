@@ -321,6 +321,166 @@ def schema_drop_field(
         cli_ctx.close()
 
 
+@app.command("add-relationship")
+def schema_add_relationship(
+    ctx: typer.Context,
+    source_entity: Annotated[str, typer.Argument(help="Source entity (has the FK)")],
+    target_entity: Annotated[str, typer.Argument(help="Target entity (being referenced)")],
+    name: Annotated[
+        str | None,
+        typer.Option("--name", "-n", help="Relationship name (default: target entity lowercase)"),
+    ] = None,
+    on_delete: Annotated[
+        str,
+        typer.Option(
+            "--on-delete",
+            help="Action when target is deleted: CASCADE, SET_NULL, RESTRICT",
+        ),
+    ] = "SET_NULL",
+    fk_field: Annotated[
+        str | None,
+        typer.Option("--fk-field", help="Foreign key field name (auto-generated if not provided)"),
+    ] = None,
+    description: Annotated[
+        str | None,
+        typer.Option("--description", "-d", help="Relationship description"),
+    ] = None,
+    created_by: Annotated[
+        str | None,
+        typer.Option("--created-by", help="Creator identifier for audit trail"),
+    ] = None,
+    reason: Annotated[
+        str | None,
+        typer.Option("--reason", help="Reason for change (audit trail)"),
+    ] = None,
+) -> None:
+    """Create a many-to-one relationship between entities.
+
+    Creates a foreign key relationship where the source entity references
+    the target entity.
+
+    Examples:
+
+        # Order belongs to Customer (SET_NULL on delete)
+        kameleondb schema add-relationship Order Customer
+
+        # Comment references Post (CASCADE delete)
+        kameleondb schema add-relationship Comment Post --on-delete CASCADE
+
+        # Employee reports to Manager (RESTRICT delete)
+        kameleondb schema add-relationship Employee Employee --name manager --on-delete RESTRICT
+    """
+    cli_ctx: CLIContext = ctx.obj
+    formatter = OutputFormatter(cli_ctx.json_output)
+
+    try:
+        db = cli_ctx.get_db()
+
+        # Default name is lowercase target entity
+        rel_name = name or target_entity.lower()
+
+        # Use schema engine directly
+        relationship = db._schema_engine.add_relationship(
+            source_entity_name=source_entity,
+            name=rel_name,
+            target_entity_name=target_entity,
+            relationship_type="many_to_one",
+            foreign_key_field=fk_field,
+            on_delete=on_delete.upper(),
+            description=description,
+            created_by=created_by,
+            reason=reason,
+        )
+
+        formatter.print_success(
+            f"Relationship '{rel_name}' created: {source_entity} → {target_entity}",
+            {
+                "name": rel_name,
+                "source": source_entity,
+                "target": target_entity,
+                "on_delete": on_delete.upper(),
+                "fk_field": relationship.foreign_key_field,
+            },
+        )
+    except Exception as e:
+        formatter.print_error(e)
+        raise typer.Exit(code=1)
+    finally:
+        cli_ctx.close()
+
+
+@app.command("add-m2m")
+def schema_add_m2m(
+    ctx: typer.Context,
+    source_entity: Annotated[str, typer.Argument(help="Source entity")],
+    target_entity: Annotated[str, typer.Argument(help="Target entity")],
+    name: Annotated[
+        str | None,
+        typer.Option("--name", "-n", help="Relationship name (auto-generated if not provided)"),
+    ] = None,
+    description: Annotated[
+        str | None,
+        typer.Option("--description", "-d", help="Relationship description"),
+    ] = None,
+    created_by: Annotated[
+        str | None,
+        typer.Option("--created-by", help="Creator identifier for audit trail"),
+    ] = None,
+    reason: Annotated[
+        str | None,
+        typer.Option("--reason", help="Reason for change (audit trail)"),
+    ] = None,
+) -> None:
+    """Create a many-to-many relationship between entities.
+
+    Creates a junction table to link records from both entities.
+    Use 'data link' and 'data unlink' commands to manage links.
+
+    Examples:
+
+        # Product has many Tags, Tag has many Products
+        kameleondb schema add-m2m Product Tag
+
+        # Custom relationship name
+        kameleondb schema add-m2m Student Course --name enrollments
+    """
+    cli_ctx: CLIContext = ctx.obj
+    formatter = OutputFormatter(cli_ctx.json_output)
+
+    try:
+        db = cli_ctx.get_db()
+
+        # Auto-generate name if not provided
+        rel_name = name or f"{source_entity.lower()}_{target_entity.lower()}"
+
+        # Create M2M relationship
+        db._schema_engine.add_relationship(
+            source_entity_name=source_entity,
+            name=rel_name,
+            target_entity_name=target_entity,
+            relationship_type="many_to_many",
+            on_delete="CASCADE",  # M2M always cascades junction entries
+            description=description,
+            created_by=created_by,
+            reason=reason,
+        )
+
+        formatter.print_success(
+            f"Many-to-many relationship '{rel_name}' created: {source_entity} <-> {target_entity}",
+            {
+                "name": rel_name,
+                "source": source_entity,
+                "target": target_entity,
+                "type": "many_to_many",
+            },
+        )
+    except Exception as e:
+        formatter.print_error(e)
+        raise typer.Exit(code=1)
+    finally:
+        cli_ctx.close()
+
+
 @app.command("stats")
 def schema_stats(
     ctx: typer.Context,
