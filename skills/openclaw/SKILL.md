@@ -5,7 +5,7 @@ description: Store and query structured data without planning schemas upfront. U
 metadata: {"openclaw":{"emoji":"🦎","requires":{"bins":["kameleondb"],"env":["KAMELEONDB_URL"]},"primaryEnv":"KAMELEONDB_URL","homepage":"https://github.com/marcosnataqs/kameleondb"}}
 ---
 
-# KameleonDB - Database That Adapts to You
+# KameleonDB - The First Database Built for Agents to Operate, Not Just Query
 
 ## When to Use This
 

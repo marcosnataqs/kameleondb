@@ -13,9 +13,9 @@
 
 *Find the true color of your data.*
 
-**The First Database Built for Agents to Own, Not Just Query**
+**The First Database Built for Agents to Operate, Not Just Query**
 
-Most databases let agents query data that humans structured. KameleonDB goes further: **agents own the entire data lifecycle**—from schema design to data ingestion to continuous evolution. You provide the goals and policies, agents build and manage the database.
+Most databases let agents query data that humans structured. KameleonDB goes further: **agents operate the entire data lifecycle**—from schema design to data ingestion to continuous evolution. You provide the goals and policies, agents build and manage the database.
 
 Built on PostgreSQL (JSONB) or SQLite (JSON1) with schema-as-data storage, agents can restructure information on the fly without migrations, DDL, or human intervention.
 
