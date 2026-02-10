@@ -43,6 +43,8 @@ See [FIRST-PRINCIPLES.md](FIRST-PRINCIPLES.md) for detailed explanations and [AG
 
 - **Dynamic Schema**: Create and modify entity fields at runtime without migrations
 - **Multi-Database**: PostgreSQL (JSONB) and SQLite (JSON1) support
+- **Relationships**: Many-to-one, one-to-many, and many-to-many with junction tables
+- **Cascading Operations**: CASCADE, SET_NULL, RESTRICT on delete
 - **Agent-First Design**: Every operation is a tool for AI agents with JSON-serializable I/O
 - **Self-Describing**: Agents can discover schema before querying
 - **Idempotent Operations**: Safe for agents to call repeatedly
@@ -286,10 +288,11 @@ pre-commit run --all-files
   - Hybrid storage (shared/dedicated modes)
   - Storage migration (materialize/dematerialize)
   - Query metrics and materialization suggestions
-- **v0.3**: Relational queries + Many-to-many (planned)
-  - Cross-entity queries with JOINs
-  - Cascading operations
-  - Many-to-many junction tables
+- **v0.3**: Relational Operations ✅
+  - Cascading operations (CASCADE, SET_NULL, RESTRICT)
+  - Many-to-many junction tables with auto-creation
+  - Link/unlink operations for many-to-many relationships
+  - Bulk link operations with optimized queries
 - **v0.4**: Natural language queries (planned)
   - LLM-powered query generation
   - Query caching and optimization

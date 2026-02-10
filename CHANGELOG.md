@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+**Many-to-Many Relationships (Spec 007)**
+- Junction table auto-creation when defining `many_to_many` relationships
+- `link()` / `unlink()` operations for managing many-to-many connections
+- `get_linked()` to retrieve linked record IDs
+- `link_many()` / `unlink_many()` optimized bulk operations
+- Cascade cleanup: deleting source or target removes junction entries
+- Target existence validation on link operations
+
+**Cascading Operations (Spec 006)**
+- `on_delete` enforcement at runtime (CASCADE, SET_NULL, RESTRICT)
+- `RestrictDeleteError` when RESTRICT blocks deletion
+- Recursive cascade for nested relationships
+- `force` parameter to bypass RESTRICT when needed
+
 ## [0.1.2] - 2026-02-07
 
 ### Fixed
