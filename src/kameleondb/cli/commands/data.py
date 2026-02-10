@@ -1,7 +1,7 @@
 """Data CRUD commands."""
 
 import json
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 
@@ -198,6 +198,579 @@ def data_delete(
         else:
             formatter.print_error(Exception(f"Failed to delete record: {record_id}"))
             raise typer.Exit(code=1)
+
+    except Exception as e:
+        formatter.print_error(e)
+        raise typer.Exit(code=1)
+    finally:
+        cli_ctx.close()
+
+
+@app.command("batch-update")
+def data_batch_update(
+    ctx: typer.Context,
+    entity_name: Annotated[str, typer.Argument(help="Entity name")],
+    from_file: Annotated[
+        str,
+        typer.Option(
+            "--from-file", "-f", help="JSONL file with updates (each line: {id, ...fields})"
+        ),
+    ],
+) -> None:
+    """Batch update multiple records from a JSONL file.
+
+    Each line in the JSONL file should have an 'id' field and the fields to update.
+
+    Examples:
+
+        kameleondb data batch-update Customer --from-file updates.jsonl
+
+        # updates.jsonl format:
+        # {"id": "abc123", "tier": "gold", "score": 100}
+        # {"id": "def456", "tier": "silver", "score": 85}
+    """
+    cli_ctx: CLIContext = ctx.obj
+    formatter = OutputFormatter(cli_ctx.json_output)
+
+    try:
+        db = cli_ctx.get_db()
+        entity = db.entity(entity_name)
+
+        # Read updates from JSONL file
+        updates = read_jsonl_file(from_file)
+
+        if not updates:
+            formatter.print_error(Exception("No updates found in file"))
+            raise typer.Exit(code=1)
+
+        updated_count = 0
+        errors: list[dict[str, Any]] = []
+
+        for update in updates:
+            record_id = update.pop("id", None)
+            if not record_id:
+                errors.append({"error": "Missing 'id' field", "data": update})
+                continue
+
+            try:
+                entity.update(record_id, update)
+                updated_count += 1
+            except Exception as e:
+                errors.append({"id": record_id, "error": str(e)})
+
+        result: dict[str, Any] = {
+            "updated_count": updated_count,
+            "error_count": len(errors),
+            "total": len(updates),
+        }
+        if errors:
+            result["errors"] = errors[:10]  # Show first 10 errors
+
+        if errors:
+            formatter.print_success(
+                f"Updated {updated_count}/{len(updates)} records ({len(errors)} errors)",
+                result,
+            )
+        else:
+            formatter.print_success(
+                f"Updated {updated_count} records",
+                result,
+            )
+
+    except Exception as e:
+        formatter.print_error(e)
+        raise typer.Exit(code=1)
+    finally:
+        cli_ctx.close()
+
+
+@app.command("batch-delete")
+def data_batch_delete(
+    ctx: typer.Context,
+    entity_name: Annotated[str, typer.Argument(help="Entity name")],
+    record_ids: Annotated[
+        list[str] | None,
+        typer.Option("--id", help="Record ID to delete (repeatable)"),
+    ] = None,
+    from_file: Annotated[
+        str | None,
+        typer.Option("--from-file", "-f", help="File with IDs to delete (one per line)"),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Skip confirmation prompt"),
+    ] = False,
+) -> None:
+    """Batch delete multiple records.
+
+    Examples:
+
+        # Delete by IDs
+        kameleondb data batch-delete Customer --id abc123 --id def456
+
+        # Delete from file (one ID per line)
+        kameleondb data batch-delete Customer --from-file ids_to_delete.txt --force
+    """
+    cli_ctx: CLIContext = ctx.obj
+    formatter = OutputFormatter(cli_ctx.json_output)
+
+    try:
+        db = cli_ctx.get_db()
+        entity = db.entity(entity_name)
+
+        # Collect IDs to delete
+        all_ids: list[str] = list(record_ids) if record_ids else []
+
+        if from_file:
+            with open(from_file) as f:
+                file_ids = [line.strip() for line in f if line.strip()]
+                all_ids.extend(file_ids)
+
+        if not all_ids:
+            raise typer.BadParameter("No IDs provided. Use --id or --from-file")
+
+        # Confirmation prompt
+        if not force and not cli_ctx.json_output:
+            confirm = typer.confirm(f"Delete {len(all_ids)} records from {entity_name}?")
+            if not confirm:
+                typer.echo("Cancelled.")
+                raise typer.Exit(code=0)
+
+        deleted_count = 0
+        errors: list[dict[str, Any]] = []
+
+        for record_id in all_ids:
+            try:
+                entity.delete(record_id)
+                deleted_count += 1
+            except Exception as e:
+                errors.append({"id": record_id, "error": str(e)})
+
+        result: dict[str, Any] = {
+            "deleted_count": deleted_count,
+            "error_count": len(errors),
+            "total": len(all_ids),
+        }
+        if errors:
+            result["errors"] = errors[:10]
+
+        if errors:
+            formatter.print_success(
+                f"Deleted {deleted_count}/{len(all_ids)} records ({len(errors)} errors)",
+                result,
+            )
+        else:
+            formatter.print_success(
+                f"Deleted {deleted_count} records",
+                result,
+            )
+
+    except Exception as e:
+        formatter.print_error(e)
+        raise typer.Exit(code=1)
+    finally:
+        cli_ctx.close()
+
+
+@app.command("stats")
+def data_stats(
+    ctx: typer.Context,
+    entity_name: Annotated[str, typer.Argument(help="Entity name")],
+) -> None:
+    """Get statistics about entity data.
+
+    Shows record counts, date ranges, and storage information.
+
+    Examples:
+
+        kameleondb data stats Customer
+    """
+    cli_ctx: CLIContext = ctx.obj
+    formatter = OutputFormatter(cli_ctx.json_output)
+
+    try:
+        db = cli_ctx.get_db()
+        from sqlalchemy import text
+
+        # Get entity info
+        entity_info = db.describe_entity(entity_name)
+        entity_def = db._schema_engine.get_entity(entity_name)
+
+        if not entity_def:
+            raise Exception(f"Entity not found: {entity_name}")
+
+        # Get record counts and date ranges
+        with db._connection.engine.connect() as conn:
+            if entity_info.storage_mode == "dedicated" and entity_info.dedicated_table_name:
+                table_name = entity_info.dedicated_table_name
+                result = conn.execute(
+                    text(
+                        f"""
+                    SELECT
+                        COUNT(*) as total_records,
+                        SUM(CASE WHEN is_deleted = false THEN 1 ELSE 0 END) as active_records,
+                        SUM(CASE WHEN is_deleted = true THEN 1 ELSE 0 END) as deleted_records,
+                        MIN(created_at) as earliest_created,
+                        MAX(created_at) as latest_created,
+                        MAX(updated_at) as last_modified
+                    FROM "{table_name}"
+                """
+                    )
+                ).fetchone()
+            else:
+                result = conn.execute(
+                    text(
+                        """
+                    SELECT
+                        COUNT(*) as total_records,
+                        SUM(CASE WHEN is_deleted = 0 THEN 1 ELSE 0 END) as active_records,
+                        SUM(CASE WHEN is_deleted = 1 THEN 1 ELSE 0 END) as deleted_records,
+                        MIN(created_at) as earliest_created,
+                        MAX(created_at) as latest_created,
+                        MAX(updated_at) as last_modified
+                    FROM kdb_records
+                    WHERE entity_id = :entity_id
+                """
+                    ),
+                    {"entity_id": entity_def.id},
+                ).fetchone()
+
+        if result is None:
+            raise Exception(f"Failed to get stats for entity: {entity_name}")
+
+        stats_data: dict[str, Any] = {
+            "entity": entity_name,
+            "total_records": result[0] or 0,
+            "active_records": result[1] or 0,
+            "deleted_records": result[2] or 0,
+            "storage_mode": entity_info.storage_mode,
+            "fields": len(entity_info.fields),
+            "created_at_range": {
+                "earliest": str(result[3]) if result[3] else None,
+                "latest": str(result[4]) if result[4] else None,
+            },
+            "last_modified": str(result[5]) if result[5] else None,
+        }
+
+        if cli_ctx.json_output:
+            formatter.print_data(stats_data)
+        else:
+            formatter.print_table(
+                f"Data Stats for {entity_name}",
+                [
+                    {"Metric": "Total Records", "Value": stats_data["total_records"]},
+                    {"Metric": "Active Records", "Value": stats_data["active_records"]},
+                    {"Metric": "Deleted Records", "Value": stats_data["deleted_records"]},
+                    {"Metric": "Storage Mode", "Value": stats_data["storage_mode"]},
+                    {"Metric": "Fields", "Value": stats_data["fields"]},
+                    {
+                        "Metric": "Earliest Created",
+                        "Value": stats_data["created_at_range"]["earliest"] or "N/A",
+                    },
+                    {
+                        "Metric": "Latest Created",
+                        "Value": stats_data["created_at_range"]["latest"] or "N/A",
+                    },
+                    {"Metric": "Last Modified", "Value": stats_data["last_modified"] or "N/A"},
+                ],
+                ["Metric", "Value"],
+            )
+
+    except Exception as e:
+        formatter.print_error(e)
+        raise typer.Exit(code=1)
+    finally:
+        cli_ctx.close()
+
+
+@app.command("link")
+def data_link(
+    ctx: typer.Context,
+    entity_name: Annotated[str, typer.Argument(help="Source entity name")],
+    record_id: Annotated[str, typer.Argument(help="Source record ID")],
+    relationship_name: Annotated[str, typer.Argument(help="Relationship name")],
+    target_id: Annotated[str, typer.Argument(help="Target record ID")],
+    created_by: Annotated[
+        str | None,
+        typer.Option("--created-by", help="Creator identifier for audit trail"),
+    ] = None,
+) -> None:
+    """Link two records in a many-to-many relationship.
+
+    Examples:
+
+        # Link a product to a tag
+        kameleondb data link Product abc123 tags tag456
+
+        # Link a student to a course
+        kameleondb data link Student stu001 enrollments course101
+    """
+    cli_ctx: CLIContext = ctx.obj
+    formatter = OutputFormatter(cli_ctx.json_output)
+
+    try:
+        db = cli_ctx.get_db()
+        entity = db.entity(entity_name)
+
+        # Link records
+        created = entity.link(
+            relationship_name=relationship_name,
+            record_id=record_id,
+            target_id=target_id,
+            created_by=created_by,
+        )
+
+        if created:
+            formatter.print_success(
+                f"Linked {entity_name}:{record_id} → {target_id}",
+                {"source_id": record_id, "target_id": target_id, "relationship": relationship_name},
+            )
+        else:
+            formatter.print_success(
+                "Link already exists",
+                {"source_id": record_id, "target_id": target_id, "relationship": relationship_name},
+            )
+
+    except Exception as e:
+        formatter.print_error(e)
+        raise typer.Exit(code=1)
+    finally:
+        cli_ctx.close()
+
+
+@app.command("unlink")
+def data_unlink(
+    ctx: typer.Context,
+    entity_name: Annotated[str, typer.Argument(help="Source entity name")],
+    record_id: Annotated[str, typer.Argument(help="Source record ID")],
+    relationship_name: Annotated[str, typer.Argument(help="Relationship name")],
+    target_id: Annotated[str, typer.Argument(help="Target record ID")],
+) -> None:
+    """Unlink two records in a many-to-many relationship.
+
+    Examples:
+
+        # Unlink a product from a tag
+        kameleondb data unlink Product abc123 tags tag456
+    """
+    cli_ctx: CLIContext = ctx.obj
+    formatter = OutputFormatter(cli_ctx.json_output)
+
+    try:
+        db = cli_ctx.get_db()
+        entity = db.entity(entity_name)
+
+        # Unlink records
+        removed = entity.unlink(
+            relationship_name=relationship_name,
+            record_id=record_id,
+            target_id=target_id,
+        )
+
+        if removed:
+            formatter.print_success(
+                f"Unlinked {entity_name}:{record_id} → {target_id}",
+                {"source_id": record_id, "target_id": target_id, "relationship": relationship_name},
+            )
+        else:
+            formatter.print_success(
+                "Link did not exist",
+                {"source_id": record_id, "target_id": target_id, "relationship": relationship_name},
+            )
+
+    except Exception as e:
+        formatter.print_error(e)
+        raise typer.Exit(code=1)
+    finally:
+        cli_ctx.close()
+
+
+@app.command("link-many")
+def data_link_many(
+    ctx: typer.Context,
+    entity_name: Annotated[str, typer.Argument(help="Source entity name")],
+    record_id: Annotated[str, typer.Argument(help="Source record ID")],
+    relationship_name: Annotated[str, typer.Argument(help="Relationship name")],
+    target_ids: Annotated[
+        list[str] | None,
+        typer.Option("--target", "-t", help="Target record ID (repeatable)"),
+    ] = None,
+    from_file: Annotated[
+        str | None,
+        typer.Option("--from-file", "-f", help="Load target IDs from file (one per line)"),
+    ] = None,
+    created_by: Annotated[
+        str | None,
+        typer.Option("--created-by", help="Creator identifier for audit trail"),
+    ] = None,
+) -> None:
+    """Link multiple target records to a source record.
+
+    Examples:
+
+        # Link product to multiple tags
+        kameleondb data link-many Product abc123 tags -t tag1 -t tag2 -t tag3
+
+        # Load target IDs from file
+        kameleondb data link-many Product abc123 tags --from-file tag_ids.txt
+    """
+    cli_ctx: CLIContext = ctx.obj
+    formatter = OutputFormatter(cli_ctx.json_output)
+
+    try:
+        db = cli_ctx.get_db()
+        entity = db.entity(entity_name)
+
+        # Collect target IDs
+        all_target_ids: list[str] = list(target_ids) if target_ids else []
+
+        if from_file:
+            with open(from_file) as f:
+                file_ids = [line.strip() for line in f if line.strip()]
+                all_target_ids.extend(file_ids)
+
+        if not all_target_ids:
+            raise typer.BadParameter("No target IDs provided. Use --target or --from-file")
+
+        # Link all targets
+        count = entity.link_many(
+            relationship_name=relationship_name,
+            record_id=record_id,
+            target_ids=all_target_ids,
+            created_by=created_by,
+        )
+
+        formatter.print_success(
+            f"Linked {count} targets to {entity_name}:{record_id}",
+            {"source_id": record_id, "linked_count": count, "total_provided": len(all_target_ids)},
+        )
+
+    except Exception as e:
+        formatter.print_error(e)
+        raise typer.Exit(code=1)
+    finally:
+        cli_ctx.close()
+
+
+@app.command("unlink-many")
+def data_unlink_many(
+    ctx: typer.Context,
+    entity_name: Annotated[str, typer.Argument(help="Source entity name")],
+    record_id: Annotated[str, typer.Argument(help="Source record ID")],
+    relationship_name: Annotated[str, typer.Argument(help="Relationship name")],
+    target_ids: Annotated[
+        list[str] | None,
+        typer.Option("--target", "-t", help="Target record ID (repeatable)"),
+    ] = None,
+    from_file: Annotated[
+        str | None,
+        typer.Option("--from-file", "-f", help="Load target IDs from file (one per line)"),
+    ] = None,
+    all_targets: Annotated[
+        bool,
+        typer.Option("--all", help="Unlink all targets for this relationship"),
+    ] = False,
+) -> None:
+    """Unlink multiple target records from a source record.
+
+    Examples:
+
+        # Unlink specific targets
+        kameleondb data unlink-many Product abc123 tags -t tag1 -t tag2
+
+        # Unlink all targets
+        kameleondb data unlink-many Product abc123 tags --all
+    """
+    cli_ctx: CLIContext = ctx.obj
+    formatter = OutputFormatter(cli_ctx.json_output)
+
+    try:
+        db = cli_ctx.get_db()
+        entity = db.entity(entity_name)
+
+        if all_targets:
+            # Unlink all
+            count = entity.unlink_all(
+                relationship_name=relationship_name,
+                record_id=record_id,
+            )
+            formatter.print_success(
+                f"Unlinked all {count} targets from {entity_name}:{record_id}",
+                {"source_id": record_id, "unlinked_count": count},
+            )
+        else:
+            # Collect target IDs
+            all_target_ids: list[str] = list(target_ids) if target_ids else []
+
+            if from_file:
+                with open(from_file) as f:
+                    file_ids = [line.strip() for line in f if line.strip()]
+                    all_target_ids.extend(file_ids)
+
+            if not all_target_ids:
+                raise typer.BadParameter(
+                    "No target IDs provided. Use --target, --from-file, or --all"
+                )
+
+            # Unlink targets
+            count = entity.unlink_many(
+                relationship_name=relationship_name,
+                record_id=record_id,
+                target_ids=all_target_ids,
+            )
+
+            formatter.print_success(
+                f"Unlinked {count} targets from {entity_name}:{record_id}",
+                {
+                    "source_id": record_id,
+                    "unlinked_count": count,
+                    "total_provided": len(all_target_ids),
+                },
+            )
+
+    except Exception as e:
+        formatter.print_error(e)
+        raise typer.Exit(code=1)
+    finally:
+        cli_ctx.close()
+
+
+@app.command("get-linked")
+def data_get_linked(
+    ctx: typer.Context,
+    entity_name: Annotated[str, typer.Argument(help="Source entity name")],
+    record_id: Annotated[str, typer.Argument(help="Source record ID")],
+    relationship_name: Annotated[str, typer.Argument(help="Relationship name")],
+) -> None:
+    """Get all linked target IDs for a many-to-many relationship.
+
+    Examples:
+
+        # Get all tags for a product
+        kameleondb data get-linked Product abc123 tags
+    """
+    cli_ctx: CLIContext = ctx.obj
+    formatter = OutputFormatter(cli_ctx.json_output)
+
+    try:
+        db = cli_ctx.get_db()
+        entity = db.entity(entity_name)
+
+        # Get linked IDs
+        linked_ids = entity.get_linked(
+            relationship_name=relationship_name,
+            record_id=record_id,
+        )
+
+        if cli_ctx.json_output:
+            formatter.print_data({"target_ids": linked_ids, "count": len(linked_ids)})
+        else:
+            if linked_ids:
+                typer.echo(f"\nLinked targets for {entity_name}:{record_id} ({len(linked_ids)}):\n")
+                for tid in linked_ids:
+                    typer.echo(f"  - {tid}")
+            else:
+                typer.echo(f"No linked targets for {entity_name}:{record_id}")
 
     except Exception as e:
         formatter.print_error(e)

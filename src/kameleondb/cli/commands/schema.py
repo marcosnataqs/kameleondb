@@ -259,6 +259,317 @@ def schema_add_field(
         cli_ctx.close()
 
 
+@app.command("drop-field")
+def schema_drop_field(
+    ctx: typer.Context,
+    entity_name: Annotated[str, typer.Argument(help="Entity name")],
+    field_name: Annotated[str, typer.Argument(help="Field name to drop")],
+    reason: Annotated[
+        str | None,
+        typer.Option("--reason", help="Reason for change (audit trail)"),
+    ] = None,
+    created_by: Annotated[
+        str | None,
+        typer.Option("--created-by", help="Creator identifier for audit trail"),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Skip confirmation prompt"),
+    ] = False,
+) -> None:
+    """Drop a field from an existing entity (soft delete).
+
+    The field is marked as inactive and no longer accessible through queries,
+    but existing data in the JSONB column is preserved.
+
+    Examples:
+
+        kameleondb schema drop-field Contact phone_number
+        kameleondb schema drop-field Contact legacy_field --reason "Field deprecated"
+    """
+    cli_ctx: CLIContext = ctx.obj
+    formatter = OutputFormatter(cli_ctx.json_output)
+
+    # Confirmation prompt
+    if not force and not cli_ctx.json_output:
+        confirm = typer.confirm(
+            f"Are you sure you want to drop field '{field_name}' from '{entity_name}'?"
+        )
+        if not confirm:
+            typer.echo("Cancelled.")
+            raise typer.Exit(code=0)
+
+    try:
+        db = cli_ctx.get_db()
+        entity = db.entity(entity_name)
+
+        # Drop field
+        entity.drop_field(
+            name=field_name,
+            created_by=created_by,
+            reason=reason,
+        )
+
+        formatter.print_success(
+            f"Field '{field_name}' dropped from '{entity_name}'",
+            {"field": field_name, "entity": entity_name},
+        )
+    except Exception as e:
+        formatter.print_error(e)
+        raise typer.Exit(code=1)
+    finally:
+        cli_ctx.close()
+
+
+@app.command("add-relationship")
+def schema_add_relationship(
+    ctx: typer.Context,
+    source_entity: Annotated[str, typer.Argument(help="Source entity (has the FK)")],
+    target_entity: Annotated[str, typer.Argument(help="Target entity (being referenced)")],
+    name: Annotated[
+        str | None,
+        typer.Option("--name", "-n", help="Relationship name (default: target entity lowercase)"),
+    ] = None,
+    on_delete: Annotated[
+        str,
+        typer.Option(
+            "--on-delete",
+            help="Action when target is deleted: CASCADE, SET_NULL, RESTRICT",
+        ),
+    ] = "SET_NULL",
+    fk_field: Annotated[
+        str | None,
+        typer.Option("--fk-field", help="Foreign key field name (auto-generated if not provided)"),
+    ] = None,
+    description: Annotated[
+        str | None,
+        typer.Option("--description", "-d", help="Relationship description"),
+    ] = None,
+    created_by: Annotated[
+        str | None,
+        typer.Option("--created-by", help="Creator identifier for audit trail"),
+    ] = None,
+    reason: Annotated[
+        str | None,
+        typer.Option("--reason", help="Reason for change (audit trail)"),
+    ] = None,
+) -> None:
+    """Create a many-to-one relationship between entities.
+
+    Creates a foreign key relationship where the source entity references
+    the target entity.
+
+    Examples:
+
+        # Order belongs to Customer (SET_NULL on delete)
+        kameleondb schema add-relationship Order Customer
+
+        # Comment references Post (CASCADE delete)
+        kameleondb schema add-relationship Comment Post --on-delete CASCADE
+
+        # Employee reports to Manager (RESTRICT delete)
+        kameleondb schema add-relationship Employee Employee --name manager --on-delete RESTRICT
+    """
+    cli_ctx: CLIContext = ctx.obj
+    formatter = OutputFormatter(cli_ctx.json_output)
+
+    try:
+        db = cli_ctx.get_db()
+
+        # Default name is lowercase target entity
+        rel_name = name or target_entity.lower()
+
+        # Use schema engine directly
+        relationship = db._schema_engine.add_relationship(
+            source_entity_name=source_entity,
+            name=rel_name,
+            target_entity_name=target_entity,
+            relationship_type="many_to_one",
+            foreign_key_field=fk_field,
+            on_delete=on_delete.upper(),
+            description=description,
+            created_by=created_by,
+            reason=reason,
+        )
+
+        formatter.print_success(
+            f"Relationship '{rel_name}' created: {source_entity} → {target_entity}",
+            {
+                "name": rel_name,
+                "source": source_entity,
+                "target": target_entity,
+                "on_delete": on_delete.upper(),
+                "fk_field": relationship.foreign_key_field,
+            },
+        )
+    except Exception as e:
+        formatter.print_error(e)
+        raise typer.Exit(code=1)
+    finally:
+        cli_ctx.close()
+
+
+@app.command("add-m2m")
+def schema_add_m2m(
+    ctx: typer.Context,
+    source_entity: Annotated[str, typer.Argument(help="Source entity")],
+    target_entity: Annotated[str, typer.Argument(help="Target entity")],
+    name: Annotated[
+        str | None,
+        typer.Option("--name", "-n", help="Relationship name (auto-generated if not provided)"),
+    ] = None,
+    description: Annotated[
+        str | None,
+        typer.Option("--description", "-d", help="Relationship description"),
+    ] = None,
+    created_by: Annotated[
+        str | None,
+        typer.Option("--created-by", help="Creator identifier for audit trail"),
+    ] = None,
+    reason: Annotated[
+        str | None,
+        typer.Option("--reason", help="Reason for change (audit trail)"),
+    ] = None,
+) -> None:
+    """Create a many-to-many relationship between entities.
+
+    Creates a junction table to link records from both entities.
+    Use 'data link' and 'data unlink' commands to manage links.
+
+    Examples:
+
+        # Product has many Tags, Tag has many Products
+        kameleondb schema add-m2m Product Tag
+
+        # Custom relationship name
+        kameleondb schema add-m2m Student Course --name enrollments
+    """
+    cli_ctx: CLIContext = ctx.obj
+    formatter = OutputFormatter(cli_ctx.json_output)
+
+    try:
+        db = cli_ctx.get_db()
+
+        # Auto-generate name if not provided
+        rel_name = name or f"{source_entity.lower()}_{target_entity.lower()}"
+
+        # Create M2M relationship
+        db._schema_engine.add_relationship(
+            source_entity_name=source_entity,
+            name=rel_name,
+            target_entity_name=target_entity,
+            relationship_type="many_to_many",
+            on_delete="CASCADE",  # M2M always cascades junction entries
+            description=description,
+            created_by=created_by,
+            reason=reason,
+        )
+
+        formatter.print_success(
+            f"Many-to-many relationship '{rel_name}' created: {source_entity} <-> {target_entity}",
+            {
+                "name": rel_name,
+                "source": source_entity,
+                "target": target_entity,
+                "type": "many_to_many",
+            },
+        )
+    except Exception as e:
+        formatter.print_error(e)
+        raise typer.Exit(code=1)
+    finally:
+        cli_ctx.close()
+
+
+@app.command("stats")
+def schema_stats(
+    ctx: typer.Context,
+    entity_name: Annotated[
+        str | None,
+        typer.Argument(help="Entity name (optional, shows all if not specified)"),
+    ] = None,
+) -> None:
+    """Get statistics about entities.
+
+    Shows record counts, storage mode, query metrics, and optimization suggestions.
+
+    Examples:
+
+        # Stats for all entities
+        kameleondb schema stats
+
+        # Stats for specific entity
+        kameleondb schema stats Contact
+    """
+    cli_ctx: CLIContext = ctx.obj
+    formatter = OutputFormatter(cli_ctx.json_output)
+
+    try:
+        db = cli_ctx.get_db()
+
+        if entity_name:
+            # Stats for specific entity
+            stats = db.get_entity_stats(entity_name)
+            data = stats.model_dump()
+
+            if cli_ctx.json_output:
+                formatter.print_data(data)
+            else:
+                # Rich table format
+                formatter.print_table(
+                    f"Stats for {entity_name}",
+                    [
+                        {"Metric": "Record Count", "Value": stats.record_count},
+                        {"Metric": "Storage Mode", "Value": stats.storage_mode},
+                        {"Metric": "Total Queries", "Value": stats.total_queries},
+                        {
+                            "Metric": "Avg Query Time (ms)",
+                            "Value": f"{stats.avg_execution_time_ms:.2f}",
+                        },
+                        {
+                            "Metric": "Max Query Time (ms)",
+                            "Value": f"{stats.max_execution_time_ms:.2f}",
+                        },
+                        {"Metric": "Total Rows Returned", "Value": stats.total_rows_returned},
+                        {"Metric": "JOINs (24h)", "Value": stats.join_count_24h},
+                        {"Metric": "Suggestion", "Value": stats.suggestion or "None"},
+                    ],
+                    ["Metric", "Value"],
+                )
+        else:
+            # Stats for all entities
+            entities = db.list_entities()
+            all_stats = []
+
+            for name in entities:
+                stats = db.get_entity_stats(name)
+                all_stats.append(stats.model_dump())
+
+            if cli_ctx.json_output:
+                formatter.print_data(all_stats)
+            else:
+                table_data = [
+                    {
+                        "Entity": s["entity_name"],
+                        "Records": s["record_count"],
+                        "Storage": s["storage_mode"],
+                        "Queries": s["total_queries"],
+                        "Avg Time (ms)": f"{s['avg_execution_time_ms']:.2f}",
+                    }
+                    for s in all_stats
+                ]
+                formatter.print_table(
+                    f"Entity Statistics ({len(entities)} entities)",
+                    table_data,
+                    ["Entity", "Records", "Storage", "Queries", "Avg Time (ms)"],
+                )
+    except Exception as e:
+        formatter.print_error(e)
+        raise typer.Exit(code=1)
+    finally:
+        cli_ctx.close()
+
+
 @app.command("context")
 def schema_context(
     ctx: typer.Context,
