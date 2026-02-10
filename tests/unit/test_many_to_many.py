@@ -292,15 +292,37 @@ class TestCascadeDelete:
         tag = db.entity("Tag")
 
         product_id = product.insert({"name": "Widget", "price": 9.99})
-        tag_id = tag.insert({"name": "Featured"})
+        tag1_id = tag.insert({"name": "Featured"})
+        tag2_id = tag.insert({"name": "Sale"})
 
-        product.link("tags", product_id, tag_id)
+        product.link("tags", product_id, tag1_id)
+        product.link("tags", product_id, tag2_id)
+        assert len(product.get_linked("tags", product_id)) == 2
+
+        # Verify junction entries exist before delete
+        from sqlalchemy import text
+
+        with db._connection.engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT COUNT(*) FROM kdb_product_tag WHERE product_id = :pid"),
+                {"pid": product_id},
+            )
+            assert result.scalar() == 2
 
         # Delete product
         product.delete(product_id)
 
-        # Tag still exists
-        assert tag.find_by_id(tag_id) is not None
+        # Tags still exist
+        assert tag.find_by_id(tag1_id) is not None
+        assert tag.find_by_id(tag2_id) is not None
+
+        # Junction entries are gone (this was the bug!)
+        with db._connection.engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT COUNT(*) FROM kdb_product_tag WHERE product_id = :pid"),
+                {"pid": product_id},
+            )
+            assert result.scalar() == 0
 
     def test_delete_target_removes_junction_entries(self, db_with_entities):
         """Deleting target record removes junction entries pointing to it."""
@@ -367,3 +389,42 @@ class TestInvalidOperations:
             product.link("nonexistent", product_id, "some-id")
 
         assert "not found" in str(exc_info.value)
+
+    def test_link_nonexistent_source_raises(self, db_with_entities):
+        """link() with nonexistent source record raises RecordNotFoundError."""
+        from kameleondb.exceptions import RecordNotFoundError
+
+        db = db_with_entities
+
+        db._schema_engine.add_relationship(
+            source_entity_name="Product",
+            name="tags",
+            target_entity_name="Tag",
+            relationship_type="many_to_many",
+        )
+
+        product = db.entity("Product")
+        tag = db.entity("Tag")
+        tag_id = tag.insert({"name": "Featured"})
+
+        with pytest.raises(RecordNotFoundError):
+            product.link("tags", "nonexistent-product-id", tag_id)
+
+    def test_link_nonexistent_target_raises(self, db_with_entities):
+        """link() with nonexistent target record raises RecordNotFoundError."""
+        from kameleondb.exceptions import RecordNotFoundError
+
+        db = db_with_entities
+
+        db._schema_engine.add_relationship(
+            source_entity_name="Product",
+            name="tags",
+            target_entity_name="Tag",
+            relationship_type="many_to_many",
+        )
+
+        product = db.entity("Product")
+        product_id = product.insert({"name": "Widget", "price": 9.99})
+
+        with pytest.raises(RecordNotFoundError):
+            product.link("tags", product_id, "nonexistent-tag-id")

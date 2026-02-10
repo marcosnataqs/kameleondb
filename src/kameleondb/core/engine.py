@@ -193,6 +193,9 @@ class Entity:
                     # Set FK field to null on related records
                     self._set_null_related(source_entity_name, fk_field, record_id)
 
+            # Also clean up many-to-many where this entity is the SOURCE
+            self._delete_junction_entries_for_source(record_id)
+
         # Finally, delete the record itself
         return self._get_query().delete(record_id)
 
@@ -446,6 +449,70 @@ class Entity:
             conn.commit()
             return result.rowcount
 
+    def _delete_junction_entries_for_source(
+        self,
+        source_id: str,
+    ) -> int:
+        """Delete all junction entries where this entity is the source.
+
+        Called when deleting a record to clean up its many-to-many links.
+
+        Args:
+            source_id: ID of the source record being deleted
+
+        Returns:
+            Total count of deleted junction entries
+        """
+        from sqlalchemy import text
+
+        from kameleondb.schema.models import (
+            EntityDefinition,
+            JunctionTable,
+            RelationshipDefinition,
+        )
+
+        total_deleted = 0
+
+        with self._db._connection.get_session() as session:
+            # Get this entity
+            entity = (
+                session.query(EntityDefinition).filter_by(name=self._name, is_active=True).first()
+            )
+            if not entity:
+                return 0
+
+            # Get all many-to-many relationships where this entity is the source
+            relationships = (
+                session.query(RelationshipDefinition)
+                .filter_by(
+                    source_entity_id=entity.id,
+                    relationship_type="many_to_many",
+                    is_active=True,
+                )
+                .all()
+            )
+
+            for rel in relationships:
+                junction = session.query(JunctionTable).filter_by(relationship_id=rel.id).first()
+                if not junction:
+                    continue
+
+                # Delete junction entries where source matches
+                with self._db._connection.engine.connect() as conn:
+                    result = conn.execute(
+                        text(
+                            f"""
+                            DELETE FROM {junction.table_name}
+                            WHERE {junction.source_fk_column} = :source_id
+                        """
+                        ),
+                        {"source_id": source_id},
+                    )
+                    conn.commit()
+                    total_deleted += result.rowcount
+
+        return total_deleted
+
     # === Many-to-Many Link Operations (Spec 007) ===
 
     def _get_junction_info(
@@ -494,10 +561,19 @@ class Entity:
             if not junction:
                 raise ValueError(f"Junction table not found for relationship '{relationship_name}'")
 
+            # Get target entity name for validation
+            target_entity = (
+                session.query(EntityDefinition)
+                .filter_by(id=relationship.target_entity_id, is_active=True)
+                .first()
+            )
+            target_entity_name = target_entity.name if target_entity else None
+
             return {
                 "table_name": junction.table_name,
                 "source_fk_column": junction.source_fk_column,
                 "target_fk_column": junction.target_fk_column,
+                "target_entity_name": target_entity_name,
             }
 
     def link(
@@ -519,24 +595,33 @@ class Entity:
 
         Raises:
             ValueError: If relationship is not many-to-many
-            RecordNotFoundError: If source record doesn't exist
+            RecordNotFoundError: If source or target record doesn't exist
         """
         from datetime import UTC, datetime
         from uuid import uuid4
 
         from sqlalchemy import text
 
+        from kameleondb.exceptions import RecordNotFoundError
+
         # Verify source record exists
         if not self.find_by_id(record_id):
-            from kameleondb.exceptions import RecordNotFoundError
-
             raise RecordNotFoundError(record_id, self._name)
 
         junction = self._get_junction_info(relationship_name)
 
+        # Verify target record exists
+        target_entity_name = junction.get("target_entity_name")
+        if target_entity_name:
+            target_entity = self._db.entity(target_entity_name)
+            if not target_entity.find_by_id(target_id):
+                raise RecordNotFoundError(target_id, target_entity_name)
+
         # Insert into junction table (ignore if exists due to unique constraint)
         link_id = str(uuid4())
         now = datetime.now(UTC).isoformat()
+
+        from sqlalchemy.exc import IntegrityError
 
         try:
             with self._db._connection.engine.connect() as conn:
@@ -558,8 +643,8 @@ class Entity:
                 )
                 conn.commit()
                 return True
-        except Exception:
-            # Likely duplicate - unique constraint violation
+        except IntegrityError:
+            # Duplicate link - unique constraint violation
             return False
 
     def unlink(
@@ -667,6 +752,8 @@ class Entity:
     ) -> int:
         """Add multiple links in a many-to-many relationship.
 
+        Optimized batch operation - fetches junction info once.
+
         Args:
             relationship_name: Name of the many-to-many relationship
             record_id: ID of this entity's record
@@ -675,10 +762,51 @@ class Entity:
         Returns:
             Count of links created (excludes duplicates)
         """
+        if not target_ids:
+            return 0
+
+        from datetime import UTC, datetime
+        from uuid import uuid4
+
+        from sqlalchemy import text
+        from sqlalchemy.exc import IntegrityError
+
+        from kameleondb.exceptions import RecordNotFoundError
+
+        # Verify source record exists
+        if not self.find_by_id(record_id):
+            raise RecordNotFoundError(record_id, self._name)
+
+        junction = self._get_junction_info(relationship_name)
+        now = datetime.now(UTC).isoformat()
         count = 0
-        for target_id in target_ids:
-            if self.link(relationship_name, record_id, target_id, created_by):
-                count += 1
+
+        # Batch insert - one transaction, individual inserts to handle duplicates
+        with self._db._connection.engine.connect() as conn:
+            for target_id in target_ids:
+                try:
+                    conn.execute(
+                        text(
+                            f"""
+                            INSERT INTO {junction["table_name"]}
+                            (id, {junction["source_fk_column"]}, {junction["target_fk_column"]}, created_at, created_by)
+                            VALUES (:id, :source_id, :target_id, :created_at, :created_by)
+                        """
+                        ),
+                        {
+                            "id": str(uuid4()),
+                            "source_id": record_id,
+                            "target_id": target_id,
+                            "created_at": now,
+                            "created_by": created_by,
+                        },
+                    )
+                    count += 1
+                except IntegrityError:
+                    # Duplicate - skip
+                    pass
+            conn.commit()
+
         return count
 
     def unlink_many(
@@ -689,6 +817,8 @@ class Entity:
     ) -> int:
         """Remove multiple links in a many-to-many relationship.
 
+        Optimized batch operation - single DELETE with IN clause.
+
         Args:
             relationship_name: Name of the many-to-many relationship
             record_id: ID of this entity's record
@@ -697,11 +827,31 @@ class Entity:
         Returns:
             Count of links removed
         """
-        count = 0
-        for target_id in target_ids:
-            if self.unlink(relationship_name, record_id, target_id):
-                count += 1
-        return count
+        if not target_ids:
+            return 0
+
+        from sqlalchemy import text
+
+        junction = self._get_junction_info(relationship_name)
+
+        # Build placeholders for IN clause
+        placeholders = ", ".join(f":target_{i}" for i in range(len(target_ids)))
+        params = {"source_id": record_id}
+        params.update({f"target_{i}": tid for i, tid in enumerate(target_ids)})
+
+        with self._db._connection.engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    f"""
+                    DELETE FROM {junction["table_name"]}
+                    WHERE {junction["source_fk_column"]} = :source_id
+                      AND {junction["target_fk_column"]} IN ({placeholders})
+                """
+                ),
+                params,
+            )
+            conn.commit()
+            return result.rowcount
 
     def add_field(
         self,
