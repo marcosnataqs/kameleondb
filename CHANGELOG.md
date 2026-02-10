@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 **OpenClaw Integration**
-- Added OpenClaw skill in `openclaw-skill/` directory for OpenClaw agent framework
+- Added OpenClaw skill in `skills/openclaw/` directory for OpenClaw agent framework
 - Includes comprehensive SKILL.md with agent-centric use cases
 - Examples: schema evolution workflow, contact tracking, batch imports
 - Ready for ClawHub deployment

@@ -65,7 +65,7 @@ clawhub install kameleondb
 - 📊 **Query with SQL** using schema context for LLM-generated queries
 - ⚡ **Self-optimize** with performance hints and materialization
 
-See [`openclaw-skill/SKILL.md`](openclaw-skill/SKILL.md) for full usage guide.
+See [`skills/openclaw/SKILL.md`](skills/openclaw/SKILL.md) for full usage guide.
 
 ## Installation
 
