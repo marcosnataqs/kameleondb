@@ -114,6 +114,33 @@ class InvalidFieldTypeError(KameleonDBError):
         self.field_type = field_type
 
 
+class ReservedFieldNameError(KameleonDBError):
+    """Field name conflicts with a reserved system column.
+
+    These column names are used internally by KameleonDB for record metadata
+    and cannot be used as user-defined field names.
+    """
+
+    RESERVED_NAMES = ["id", "created_at", "updated_at", "created_by", "is_deleted"]
+
+    def __init__(self, field_name: str, entity_name: str) -> None:
+        message = (
+            f"Cannot add field '{field_name}' to entity '{entity_name}': "
+            f"'{field_name}' is a reserved system column name. "
+            f"Reserved names: {', '.join(self.RESERVED_NAMES)}"
+        )
+        super().__init__(
+            message,
+            {
+                "field_name": field_name,
+                "entity_name": entity_name,
+                "reserved_names": self.RESERVED_NAMES,
+            },
+        )
+        self.field_name = field_name
+        self.entity_name = entity_name
+
+
 class ValidationError(KameleonDBError):
     """Data validation failed."""
 

@@ -238,8 +238,17 @@ class SchemaEngine:
 
             # Add fields
             if fields:
+                from kameleondb.exceptions import ReservedFieldNameError
+
+                reserved_names = {"id", "created_at", "updated_at", "created_by", "is_deleted"}
+
                 for field_spec in fields:
                     spec = FieldSpec(**field_spec)
+
+                    # Check for reserved system column names
+                    if spec.name.lower() in reserved_names:
+                        raise ReservedFieldNameError(spec.name, name)
+
                     self._validate_field_type(
                         spec.type.value if isinstance(spec.type, FieldType) else spec.type
                     )
@@ -418,9 +427,17 @@ class SchemaEngine:
             EntityNotFoundError: If entity doesn't exist
             FieldAlreadyExistsError: If field exists and if_not_exists=False
             InvalidFieldTypeError: If field_type is invalid
+            ReservedFieldNameError: If field name is a reserved system column
         """
+        from kameleondb.exceptions import ReservedFieldNameError
+
         self.initialize()
         self._validate_field_type(field_type)
+
+        # Check for reserved system column names
+        reserved_names = {"id", "created_at", "updated_at", "created_by", "is_deleted"}
+        if name.lower() in reserved_names:
+            raise ReservedFieldNameError(name, entity_name)
 
         with self._get_session() as session:
             entity = (
