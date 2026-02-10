@@ -249,3 +249,45 @@ class MaterializationError(StorageModeError):
         super().__init__(message, {"entity_name": entity_name, "reason": reason})
         self.entity_name = entity_name
         self.reason = reason
+
+
+# === Cascade Errors (Spec 006: Cascading Operations) ===
+
+
+class RestrictDeleteError(KameleonDBError):
+    """Raised when RESTRICT prevents deletion due to related records.
+
+    Agent-friendly: tells exactly what's blocking and how to fix it.
+    """
+
+    def __init__(self, entity_name: str, related_entity: str, count: int) -> None:
+        message = (
+            f"Cannot delete {entity_name}: {count} related {related_entity} record(s) exist. "
+            f"Delete related records first, or change on_delete to CASCADE/SET_NULL."
+        )
+        super().__init__(
+            message,
+            {
+                "entity_name": entity_name,
+                "related_entity": related_entity,
+                "related_count": count,
+                "suggestion": f"Delete related {related_entity} records first",
+            },
+        )
+        self.entity_name = entity_name
+        self.related_entity = related_entity
+        self.count = count
+
+
+class CascadeError(KameleonDBError):
+    """Error during cascade operation."""
+
+    def __init__(self, entity_name: str, operation: str, reason: str) -> None:
+        message = f"Cascade {operation} failed for '{entity_name}': {reason}"
+        super().__init__(
+            message,
+            {"entity_name": entity_name, "operation": operation, "reason": reason},
+        )
+        self.entity_name = entity_name
+        self.operation = operation
+        self.reason = reason
