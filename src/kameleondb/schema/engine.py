@@ -1236,6 +1236,66 @@ class SchemaEngine:
             )
             return relationship is not None
 
+    def get_incoming_relationships(
+        self,
+        entity_name: str,
+    ) -> list[dict[str, Any]]:
+        """Get relationships where this entity is the target.
+
+        Used for cascade operations - when deleting a record, we need to know
+        what other entities reference it and what on_delete action to apply.
+
+        Args:
+            entity_name: Target entity name
+
+        Returns:
+            List of relationship dicts with source_entity, fk_field, on_delete info
+
+        Raises:
+            EntityNotFoundError: If entity doesn't exist
+        """
+        self.initialize()
+
+        with self._get_session() as session:
+            entity = (
+                session.query(EntityDefinition).filter_by(name=entity_name, is_active=True).first()
+            )
+            if not entity:
+                available = [
+                    e[0]
+                    for e in session.query(EntityDefinition.name).filter_by(is_active=True).all()
+                ]
+                raise EntityNotFoundError(entity_name, available)
+
+            # Get incoming relationships (where this entity is the target)
+            incoming = (
+                session.query(RelationshipDefinition)
+                .filter_by(target_entity_id=entity.id, is_active=True)
+                .all()
+            )
+
+            result = []
+            for rel in incoming:
+                # Get source entity name
+                source_entity = (
+                    session.query(EntityDefinition)
+                    .filter_by(id=rel.source_entity_id, is_active=True)
+                    .first()
+                )
+                if source_entity:
+                    result.append(
+                        {
+                            "relationship_name": rel.name,
+                            "source_entity": source_entity.name,
+                            "target_entity": entity_name,
+                            "foreign_key_field": rel.foreign_key_field,
+                            "on_delete": rel.on_delete,
+                            "relationship_type": rel.relationship_type,
+                        }
+                    )
+
+            return result
+
     def list_relationships(self, entity_name: str | None = None) -> list[dict[str, Any]]:
         """List all relationships, optionally filtered by entity.
 

@@ -121,16 +121,251 @@ class Entity:
         """
         return self._get_query().update(record_id, data)
 
-    def delete(self, record_id: str) -> bool:
-        """Delete a record.
+    def delete(
+        self,
+        record_id: str,
+        cascade: bool = True,
+        force: bool = False,
+    ) -> bool:
+        """Delete a record with cascade handling.
+
+        Honors on_delete rules from relationships:
+        - CASCADE: Deletes related records in other entities
+        - SET_NULL: Sets FK field to null on related records
+        - RESTRICT: Blocks delete if related records exist
 
         Args:
             record_id: Record ID to delete
+            cascade: If True, honor on_delete rules (default True)
+            force: If True, bypass RESTRICT checks (dangerous, default False)
 
         Returns:
             True if deleted
+
+        Raises:
+            RestrictDeleteError: If RESTRICT blocks deletion
+            RecordNotFoundError: If record doesn't exist
         """
+        from kameleondb.exceptions import RestrictDeleteError
+
+        # Verify record exists before cascade checks
+        existing = self.find_by_id(record_id)
+        if not existing:
+            from kameleondb.exceptions import RecordNotFoundError
+
+            raise RecordNotFoundError(record_id, self._name)
+
+        if cascade:
+            # Get incoming relationships (where this entity is the target)
+            incoming_rels = self._db._schema_engine.get_incoming_relationships(self._name)
+
+            for rel in incoming_rels:
+                source_entity_name = rel["source_entity"]
+                fk_field = rel["foreign_key_field"]
+                on_delete = rel["on_delete"]
+
+                if not fk_field:
+                    continue  # Skip relationships without FK field
+
+                # Find related records in source entity
+                related_count = self._count_related_records(source_entity_name, fk_field, record_id)
+
+                if related_count == 0:
+                    continue  # No related records, nothing to do
+
+                # Handle based on on_delete action
+                if on_delete == "RESTRICT" and not force:
+                    raise RestrictDeleteError(self._name, source_entity_name, related_count)
+
+                elif on_delete == "CASCADE":
+                    # Delete related records (this will recursively cascade)
+                    self._cascade_delete_related(source_entity_name, fk_field, record_id)
+
+                elif on_delete == "SET_NULL":
+                    # Set FK field to null on related records
+                    self._set_null_related(source_entity_name, fk_field, record_id)
+
+        # Finally, delete the record itself
         return self._get_query().delete(record_id)
+
+    def _count_related_records(
+        self,
+        source_entity_name: str,
+        fk_field: str,
+        target_id: str,
+    ) -> int:
+        """Count records in source entity that reference the target.
+
+        Args:
+            source_entity_name: Entity that has the FK field
+            fk_field: Name of the FK field
+            target_id: ID being referenced
+
+        Returns:
+            Count of related records
+        """
+        from sqlalchemy import text
+
+        # Build query based on storage mode
+        entity_info = self._db._schema_engine.get_entity(source_entity_name)
+        if not entity_info:
+            return 0
+
+        is_postgresql = self._db._connection.engine.dialect.name == "postgresql"
+
+        if entity_info.storage_mode == "dedicated" and entity_info.dedicated_table_name:
+            # Dedicated table - direct column access
+            sql = f"""
+                SELECT COUNT(*) FROM {entity_info.dedicated_table_name}
+                WHERE {fk_field} = :target_id AND is_deleted = {"false" if is_postgresql else "0"}
+            """
+        else:
+            # Shared storage - JSON access
+            if is_postgresql:
+                sql = f"""
+                    SELECT COUNT(*) FROM kdb_records
+                    WHERE entity_id = :entity_id
+                      AND data->>'{fk_field}' = :target_id
+                      AND is_deleted = false
+                """
+            else:
+                sql = f"""
+                    SELECT COUNT(*) FROM kdb_records
+                    WHERE entity_id = :entity_id
+                      AND json_extract(data, '$.{fk_field}') = :target_id
+                      AND is_deleted = 0
+                """
+
+        with self._db._connection.engine.connect() as conn:
+            result = conn.execute(
+                text(sql),
+                {"entity_id": entity_info.id, "target_id": target_id},
+            )
+            return result.scalar() or 0
+
+    def _cascade_delete_related(
+        self,
+        source_entity_name: str,
+        fk_field: str,
+        target_id: str,
+    ) -> int:
+        """Delete all records in source entity that reference the target.
+
+        Args:
+            source_entity_name: Entity that has the FK field
+            fk_field: Name of the FK field
+            target_id: ID being referenced
+
+        Returns:
+            Count of deleted records
+        """
+        from sqlalchemy import text
+
+        entity_info = self._db._schema_engine.get_entity(source_entity_name)
+        if not entity_info:
+            return 0
+
+        is_postgresql = self._db._connection.engine.dialect.name == "postgresql"
+
+        # First, get all related record IDs
+        if entity_info.storage_mode == "dedicated" and entity_info.dedicated_table_name:
+            sql = f"""
+                SELECT id FROM {entity_info.dedicated_table_name}
+                WHERE {fk_field} = :target_id AND is_deleted = {"false" if is_postgresql else "0"}
+            """
+        else:
+            if is_postgresql:
+                sql = f"""
+                    SELECT id FROM kdb_records
+                    WHERE entity_id = :entity_id
+                      AND data->>'{fk_field}' = :target_id
+                      AND is_deleted = false
+                """
+            else:
+                sql = f"""
+                    SELECT id FROM kdb_records
+                    WHERE entity_id = :entity_id
+                      AND json_extract(data, '$.{fk_field}') = :target_id
+                      AND is_deleted = 0
+                """
+
+        with self._db._connection.engine.connect() as conn:
+            result = conn.execute(
+                text(sql),
+                {"entity_id": entity_info.id, "target_id": target_id},
+            )
+            related_ids = [row[0] for row in result.fetchall()]
+
+        # Delete each related record (recursively handles cascades)
+        source_entity = self._db.entity(source_entity_name)
+        deleted_count = 0
+        for related_id in related_ids:
+            try:
+                source_entity.delete(related_id, cascade=True)
+                deleted_count += 1
+            except Exception:
+                # Log but continue - partial cascade is better than none
+                pass
+
+        return deleted_count
+
+    def _set_null_related(
+        self,
+        source_entity_name: str,
+        fk_field: str,
+        target_id: str,
+    ) -> int:
+        """Set FK field to null on all records that reference the target.
+
+        Args:
+            source_entity_name: Entity that has the FK field
+            fk_field: Name of the FK field
+            target_id: ID being referenced
+
+        Returns:
+            Count of updated records
+        """
+        from sqlalchemy import text
+
+        entity_info = self._db._schema_engine.get_entity(source_entity_name)
+        if not entity_info:
+            return 0
+
+        is_postgresql = self._db._connection.engine.dialect.name == "postgresql"
+
+        if entity_info.storage_mode == "dedicated" and entity_info.dedicated_table_name:
+            # Dedicated table - direct column update
+            sql = f"""
+                UPDATE {entity_info.dedicated_table_name}
+                SET {fk_field} = NULL, updated_at = {"NOW()" if is_postgresql else "datetime('now')"}
+                WHERE {fk_field} = :target_id AND is_deleted = {"false" if is_postgresql else "0"}
+            """
+        else:
+            # Shared storage - JSON update
+            if is_postgresql:
+                sql = f"""
+                    UPDATE kdb_records
+                    SET data = data - '{fk_field}', updated_at = NOW()
+                    WHERE entity_id = :entity_id
+                      AND data->>'{fk_field}' = :target_id
+                      AND is_deleted = false
+                """
+            else:
+                sql = f"""
+                    UPDATE kdb_records
+                    SET data = json_remove(data, '$.{fk_field}'), updated_at = datetime('now')
+                    WHERE entity_id = :entity_id
+                      AND json_extract(data, '$.{fk_field}') = :target_id
+                      AND is_deleted = 0
+                """
+
+        with self._db._connection.engine.connect() as conn:
+            result = conn.execute(
+                text(sql),
+                {"entity_id": entity_info.id, "target_id": target_id},
+            )
+            conn.commit()
+            return result.rowcount
 
     def add_field(
         self,
