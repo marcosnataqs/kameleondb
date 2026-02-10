@@ -1,7 +1,7 @@
 """Data CRUD commands."""
 
 import json
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 
@@ -244,7 +244,7 @@ def data_batch_update(
             raise typer.Exit(code=1)
 
         updated_count = 0
-        errors: list[dict] = []
+        errors: list[dict[str, Any]] = []
 
         for update in updates:
             record_id = update.pop("id", None)
@@ -258,7 +258,7 @@ def data_batch_update(
             except Exception as e:
                 errors.append({"id": record_id, "error": str(e)})
 
-        result = {
+        result: dict[str, Any] = {
             "updated_count": updated_count,
             "error_count": len(errors),
             "total": len(updates),
@@ -337,7 +337,7 @@ def data_batch_delete(
                 raise typer.Exit(code=0)
 
         deleted_count = 0
-        errors: list[dict] = []
+        errors: list[dict[str, Any]] = []
 
         for record_id in all_ids:
             try:
@@ -346,7 +346,7 @@ def data_batch_delete(
             except Exception as e:
                 errors.append({"id": record_id, "error": str(e)})
 
-        result = {
+        result: dict[str, Any] = {
             "deleted_count": deleted_count,
             "error_count": len(errors),
             "total": len(all_ids),
@@ -435,7 +435,10 @@ def data_stats(
                     {"entity_id": entity_def.id},
                 ).fetchone()
 
-        stats_data = {
+        if result is None:
+            raise Exception(f"Failed to get stats for entity: {entity_name}")
+
+        stats_data: dict[str, Any] = {
             "entity": entity_name,
             "total_records": result[0] or 0,
             "active_records": result[1] or 0,
