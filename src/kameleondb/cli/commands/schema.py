@@ -259,6 +259,157 @@ def schema_add_field(
         cli_ctx.close()
 
 
+@app.command("drop-field")
+def schema_drop_field(
+    ctx: typer.Context,
+    entity_name: Annotated[str, typer.Argument(help="Entity name")],
+    field_name: Annotated[str, typer.Argument(help="Field name to drop")],
+    reason: Annotated[
+        str | None,
+        typer.Option("--reason", help="Reason for change (audit trail)"),
+    ] = None,
+    created_by: Annotated[
+        str | None,
+        typer.Option("--created-by", help="Creator identifier for audit trail"),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Skip confirmation prompt"),
+    ] = False,
+) -> None:
+    """Drop a field from an existing entity (soft delete).
+
+    The field is marked as inactive and no longer accessible through queries,
+    but existing data in the JSONB column is preserved.
+
+    Examples:
+
+        kameleondb schema drop-field Contact phone_number
+        kameleondb schema drop-field Contact legacy_field --reason "Field deprecated"
+    """
+    cli_ctx: CLIContext = ctx.obj
+    formatter = OutputFormatter(cli_ctx.json_output)
+
+    # Confirmation prompt
+    if not force and not cli_ctx.json_output:
+        confirm = typer.confirm(
+            f"Are you sure you want to drop field '{field_name}' from '{entity_name}'?"
+        )
+        if not confirm:
+            typer.echo("Cancelled.")
+            raise typer.Exit(code=0)
+
+    try:
+        db = cli_ctx.get_db()
+        entity = db.entity(entity_name)
+
+        # Drop field
+        entity.drop_field(
+            name=field_name,
+            created_by=created_by,
+            reason=reason,
+        )
+
+        formatter.print_success(
+            f"Field '{field_name}' dropped from '{entity_name}'",
+            {"field": field_name, "entity": entity_name},
+        )
+    except Exception as e:
+        formatter.print_error(e)
+        raise typer.Exit(code=1)
+    finally:
+        cli_ctx.close()
+
+
+@app.command("stats")
+def schema_stats(
+    ctx: typer.Context,
+    entity_name: Annotated[
+        str | None,
+        typer.Argument(help="Entity name (optional, shows all if not specified)"),
+    ] = None,
+) -> None:
+    """Get statistics about entities.
+
+    Shows record counts, storage mode, query metrics, and optimization suggestions.
+
+    Examples:
+
+        # Stats for all entities
+        kameleondb schema stats
+
+        # Stats for specific entity
+        kameleondb schema stats Contact
+    """
+    cli_ctx: CLIContext = ctx.obj
+    formatter = OutputFormatter(cli_ctx.json_output)
+
+    try:
+        db = cli_ctx.get_db()
+
+        if entity_name:
+            # Stats for specific entity
+            stats = db.get_entity_stats(entity_name)
+            data = stats.model_dump()
+
+            if cli_ctx.json_output:
+                formatter.print_data(data)
+            else:
+                # Rich table format
+                formatter.print_table(
+                    f"Stats for {entity_name}",
+                    [
+                        {"Metric": "Record Count", "Value": stats.record_count},
+                        {"Metric": "Storage Mode", "Value": stats.storage_mode},
+                        {"Metric": "Total Queries", "Value": stats.total_queries},
+                        {
+                            "Metric": "Avg Query Time (ms)",
+                            "Value": f"{stats.avg_execution_time_ms:.2f}",
+                        },
+                        {
+                            "Metric": "Max Query Time (ms)",
+                            "Value": f"{stats.max_execution_time_ms:.2f}",
+                        },
+                        {"Metric": "Total Rows Returned", "Value": stats.total_rows_returned},
+                        {"Metric": "JOINs (24h)", "Value": stats.join_count_24h},
+                        {"Metric": "Suggestion", "Value": stats.suggestion or "None"},
+                    ],
+                    ["Metric", "Value"],
+                )
+        else:
+            # Stats for all entities
+            entities = db.list_entities()
+            all_stats = []
+
+            for name in entities:
+                stats = db.get_entity_stats(name)
+                all_stats.append(stats.model_dump())
+
+            if cli_ctx.json_output:
+                formatter.print_data(all_stats)
+            else:
+                table_data = [
+                    {
+                        "Entity": s["entity_name"],
+                        "Records": s["record_count"],
+                        "Storage": s["storage_mode"],
+                        "Queries": s["total_queries"],
+                        "Avg Time (ms)": f"{s['avg_execution_time_ms']:.2f}",
+                    }
+                    for s in all_stats
+                ]
+                formatter.print_table(
+                    f"Entity Statistics ({len(entities)} entities)",
+                    table_data,
+                    ["Entity", "Records", "Storage", "Queries", "Avg Time (ms)"],
+                )
+    except Exception as e:
+        formatter.print_error(e)
+        raise typer.Exit(code=1)
+    finally:
+        cli_ctx.close()
+
+
 @app.command("context")
 def schema_context(
     ctx: typer.Context,
