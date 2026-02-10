@@ -344,3 +344,88 @@ class DedicatedTableManager:
                     text(f'SELECT COUNT(*) FROM "{table_name}" WHERE is_deleted = false')
                 )
             return result.scalar() or 0
+
+    # === Junction Table Operations (Spec 007: Many-to-Many) ===
+
+    def generate_junction_table_name(
+        self,
+        source_entity_name: str,
+        target_entity_name: str,
+    ) -> str:
+        """Generate junction table name for many-to-many relationship.
+
+        Args:
+            source_entity_name: Source entity name
+            target_entity_name: Target entity name
+
+        Returns:
+            Junction table name (e.g., "kdb_product_tag")
+        """
+        source = source_entity_name.lower()
+        target = target_entity_name.lower()
+        return f"kdb_{source}_{target}"
+
+    def create_junction_table(
+        self,
+        source_entity: EntityDefinition,
+        target_entity: EntityDefinition,
+        source_fk_column: str | None = None,
+        target_fk_column: str | None = None,
+    ) -> str:
+        """Create a junction table for many-to-many relationship.
+
+        Args:
+            source_entity: Source entity definition
+            target_entity: Target entity definition
+            source_fk_column: Column name for source FK (default: {source}_id)
+            target_fk_column: Column name for target FK (default: {target}_id)
+
+        Returns:
+            The created junction table name
+        """
+        table_name = self.generate_junction_table_name(source_entity.name, target_entity.name)
+
+        # Default column names
+        if source_fk_column is None:
+            source_fk_column = f"{source_entity.name.lower()}_id"
+        if target_fk_column is None:
+            target_fk_column = f"{target_entity.name.lower()}_id"
+
+        # Build columns
+        columns: list[Column[Any]] = [
+            Column("id", String(36), primary_key=True),
+            Column(source_fk_column, String(36), nullable=False),
+            Column(target_fk_column, String(36), nullable=False),
+            Column("created_at", DateTime(timezone=True), nullable=False),
+            Column("created_by", String(255), nullable=True),
+        ]
+
+        # Build indexes
+        indexes: list[Index] = [
+            # Unique constraint on the pair
+            Index(
+                f"ix_{table_name}_unique",
+                source_fk_column,
+                target_fk_column,
+                unique=True,
+            ),
+            # Index for reverse lookups
+            Index(f"ix_{table_name}_{target_fk_column}", target_fk_column),
+        ]
+
+        # Create table
+        metadata = MetaData()
+        table = Table(table_name, metadata, *columns, *indexes)
+
+        with self._engine.begin() as conn:
+            table.create(conn)
+
+        return table_name
+
+    def drop_junction_table(self, table_name: str) -> None:
+        """Drop a junction table.
+
+        Args:
+            table_name: The junction table name to drop
+        """
+        self.drop_dedicated_table(table_name)

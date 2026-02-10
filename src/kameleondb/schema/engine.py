@@ -33,6 +33,7 @@ from kameleondb.schema.models import (
     Base,
     EntityDefinition,
     FieldDefinition,
+    JunctionTable,
     RelationshipDefinition,
     SchemaChangelog,
 )
@@ -1068,6 +1069,17 @@ class SchemaEngine:
                     )
                     session.add(fk_field)
 
+            # For many-to-many, create junction table
+            if rel_type == RelationshipTypeEnum.MANY_TO_MANY:
+                # Flush to get relationship ID
+                session.flush()
+                self._create_junction_table(
+                    session=session,
+                    source_entity=source_entity,
+                    target_entity=target_entity,
+                    relationship=relationship,
+                )
+
             # Log the change
             self._log_change(
                 session,
@@ -1088,6 +1100,51 @@ class SchemaEngine:
             session.commit()
             session.refresh(relationship)
             return relationship
+
+    def _create_junction_table(
+        self,
+        session: Session,
+        source_entity: EntityDefinition,
+        target_entity: EntityDefinition,
+        relationship: RelationshipDefinition,
+    ) -> JunctionTable:
+        """Create junction table for many-to-many relationship.
+
+        Args:
+            session: Database session
+            source_entity: Source entity definition
+            target_entity: Target entity definition
+            relationship: The relationship definition
+
+        Returns:
+            JunctionTable metadata record
+        """
+        from kameleondb.storage.dedicated import DedicatedTableManager
+
+        manager = DedicatedTableManager(self._connection.engine)
+
+        # Generate column names
+        source_fk_column = f"{source_entity.name.lower()}_id"
+        target_fk_column = f"{target_entity.name.lower()}_id"
+
+        # Create the actual junction table
+        table_name = manager.create_junction_table(
+            source_entity=source_entity,
+            target_entity=target_entity,
+            source_fk_column=source_fk_column,
+            target_fk_column=target_fk_column,
+        )
+
+        # Create junction table metadata record
+        junction = JunctionTable(
+            relationship_id=relationship.id,
+            table_name=table_name,
+            source_fk_column=source_fk_column,
+            target_fk_column=target_fk_column,
+        )
+        session.add(junction)
+
+        return junction
 
     def remove_relationship(
         self,

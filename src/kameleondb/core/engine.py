@@ -163,6 +163,14 @@ class Entity:
                 source_entity_name = rel["source_entity"]
                 fk_field = rel["foreign_key_field"]
                 on_delete = rel["on_delete"]
+                rel_type = rel.get("relationship_type", "many_to_one")
+
+                # Handle many-to-many specially - delete junction entries only
+                if rel_type == "many_to_many":
+                    self._delete_junction_entries_for_target(
+                        source_entity_name, rel["relationship_name"], record_id
+                    )
+                    continue
 
                 if not fk_field:
                     continue  # Skip relationships without FK field
@@ -366,6 +374,334 @@ class Entity:
             )
             conn.commit()
             return result.rowcount
+
+    def _delete_junction_entries_for_target(
+        self,
+        source_entity_name: str,
+        relationship_name: str,
+        target_id: str,
+    ) -> int:
+        """Delete junction entries when target record is deleted.
+
+        For many-to-many relationships, CASCADE means deleting the junction
+        entries (links), not the records on the other side.
+
+        Args:
+            source_entity_name: Entity that has the many-to-many relationship
+            relationship_name: Name of the relationship
+            target_id: ID of the target record being deleted
+
+        Returns:
+            Count of deleted junction entries
+        """
+        from sqlalchemy import text
+
+        from kameleondb.schema.models import (
+            EntityDefinition,
+            JunctionTable,
+            RelationshipDefinition,
+        )
+
+        with self._db._connection.get_session() as session:
+            # Get source entity
+            source_entity = (
+                session.query(EntityDefinition)
+                .filter_by(name=source_entity_name, is_active=True)
+                .first()
+            )
+            if not source_entity:
+                return 0
+
+            # Get relationship
+            relationship = (
+                session.query(RelationshipDefinition)
+                .filter_by(
+                    source_entity_id=source_entity.id,
+                    name=relationship_name,
+                    is_active=True,
+                )
+                .first()
+            )
+            if not relationship:
+                return 0
+
+            # Get junction table
+            junction = (
+                session.query(JunctionTable).filter_by(relationship_id=relationship.id).first()
+            )
+            if not junction:
+                return 0
+
+        # Delete junction entries where target matches
+        with self._db._connection.engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    f"""
+                    DELETE FROM {junction.table_name}
+                    WHERE {junction.target_fk_column} = :target_id
+                """
+                ),
+                {"target_id": target_id},
+            )
+            conn.commit()
+            return result.rowcount
+
+    # === Many-to-Many Link Operations (Spec 007) ===
+
+    def _get_junction_info(
+        self,
+        relationship_name: str,
+    ) -> dict[str, Any]:
+        """Get junction table info for a many-to-many relationship.
+
+        Args:
+            relationship_name: Name of the relationship
+
+        Returns:
+            Dict with junction table info
+
+        Raises:
+            ValueError: If relationship is not many-to-many or doesn't exist
+        """
+        from kameleondb.schema.models import JunctionTable, RelationshipDefinition
+
+        with self._db._connection.get_session() as session:
+            # Get entity
+            from kameleondb.schema.models import EntityDefinition
+
+            entity = (
+                session.query(EntityDefinition).filter_by(name=self._name, is_active=True).first()
+            )
+            if not entity:
+                raise ValueError(f"Entity '{self._name}' not found")
+
+            # Get relationship
+            relationship = (
+                session.query(RelationshipDefinition)
+                .filter_by(source_entity_id=entity.id, name=relationship_name, is_active=True)
+                .first()
+            )
+            if not relationship:
+                raise ValueError(f"Relationship '{relationship_name}' not found on '{self._name}'")
+
+            if relationship.relationship_type != "many_to_many":
+                raise ValueError(f"'{relationship_name}' is not a many-to-many relationship")
+
+            # Get junction table
+            junction = (
+                session.query(JunctionTable).filter_by(relationship_id=relationship.id).first()
+            )
+            if not junction:
+                raise ValueError(f"Junction table not found for relationship '{relationship_name}'")
+
+            return {
+                "table_name": junction.table_name,
+                "source_fk_column": junction.source_fk_column,
+                "target_fk_column": junction.target_fk_column,
+            }
+
+    def link(
+        self,
+        relationship_name: str,
+        record_id: str,
+        target_id: str,
+        created_by: str | None = None,
+    ) -> bool:
+        """Add a link in a many-to-many relationship.
+
+        Args:
+            relationship_name: Name of the many-to-many relationship
+            record_id: ID of this entity's record
+            target_id: ID of the target record to link
+
+        Returns:
+            True if link was created, False if already exists
+
+        Raises:
+            ValueError: If relationship is not many-to-many
+            RecordNotFoundError: If source record doesn't exist
+        """
+        from datetime import UTC, datetime
+        from uuid import uuid4
+
+        from sqlalchemy import text
+
+        # Verify source record exists
+        if not self.find_by_id(record_id):
+            from kameleondb.exceptions import RecordNotFoundError
+
+            raise RecordNotFoundError(record_id, self._name)
+
+        junction = self._get_junction_info(relationship_name)
+
+        # Insert into junction table (ignore if exists due to unique constraint)
+        link_id = str(uuid4())
+        now = datetime.now(UTC).isoformat()
+
+        try:
+            with self._db._connection.engine.connect() as conn:
+                conn.execute(
+                    text(
+                        f"""
+                        INSERT INTO {junction["table_name"]}
+                        (id, {junction["source_fk_column"]}, {junction["target_fk_column"]}, created_at, created_by)
+                        VALUES (:id, :source_id, :target_id, :created_at, :created_by)
+                    """
+                    ),
+                    {
+                        "id": link_id,
+                        "source_id": record_id,
+                        "target_id": target_id,
+                        "created_at": now,
+                        "created_by": created_by,
+                    },
+                )
+                conn.commit()
+                return True
+        except Exception:
+            # Likely duplicate - unique constraint violation
+            return False
+
+    def unlink(
+        self,
+        relationship_name: str,
+        record_id: str,
+        target_id: str,
+    ) -> bool:
+        """Remove a link in a many-to-many relationship.
+
+        Args:
+            relationship_name: Name of the many-to-many relationship
+            record_id: ID of this entity's record
+            target_id: ID of the target record to unlink
+
+        Returns:
+            True if link was removed, False if didn't exist
+        """
+        from sqlalchemy import text
+
+        junction = self._get_junction_info(relationship_name)
+
+        with self._db._connection.engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    f"""
+                    DELETE FROM {junction["table_name"]}
+                    WHERE {junction["source_fk_column"]} = :source_id
+                      AND {junction["target_fk_column"]} = :target_id
+                """
+                ),
+                {"source_id": record_id, "target_id": target_id},
+            )
+            conn.commit()
+            return result.rowcount > 0
+
+    def unlink_all(
+        self,
+        relationship_name: str,
+        record_id: str,
+    ) -> int:
+        """Remove all links for a record in a many-to-many relationship.
+
+        Args:
+            relationship_name: Name of the many-to-many relationship
+            record_id: ID of this entity's record
+
+        Returns:
+            Count of removed links
+        """
+        from sqlalchemy import text
+
+        junction = self._get_junction_info(relationship_name)
+
+        with self._db._connection.engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    f"""
+                    DELETE FROM {junction["table_name"]}
+                    WHERE {junction["source_fk_column"]} = :source_id
+                """
+                ),
+                {"source_id": record_id},
+            )
+            conn.commit()
+            return result.rowcount
+
+    def get_linked(
+        self,
+        relationship_name: str,
+        record_id: str,
+    ) -> list[str]:
+        """Get all linked record IDs for a many-to-many relationship.
+
+        Args:
+            relationship_name: Name of the many-to-many relationship
+            record_id: ID of this entity's record
+
+        Returns:
+            List of linked target record IDs
+        """
+        from sqlalchemy import text
+
+        junction = self._get_junction_info(relationship_name)
+
+        with self._db._connection.engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    f"""
+                    SELECT {junction["target_fk_column"]}
+                    FROM {junction["table_name"]}
+                    WHERE {junction["source_fk_column"]} = :source_id
+                """
+                ),
+                {"source_id": record_id},
+            )
+            return [row[0] for row in result.fetchall()]
+
+    def link_many(
+        self,
+        relationship_name: str,
+        record_id: str,
+        target_ids: list[str],
+        created_by: str | None = None,
+    ) -> int:
+        """Add multiple links in a many-to-many relationship.
+
+        Args:
+            relationship_name: Name of the many-to-many relationship
+            record_id: ID of this entity's record
+            target_ids: List of target record IDs to link
+
+        Returns:
+            Count of links created (excludes duplicates)
+        """
+        count = 0
+        for target_id in target_ids:
+            if self.link(relationship_name, record_id, target_id, created_by):
+                count += 1
+        return count
+
+    def unlink_many(
+        self,
+        relationship_name: str,
+        record_id: str,
+        target_ids: list[str],
+    ) -> int:
+        """Remove multiple links in a many-to-many relationship.
+
+        Args:
+            relationship_name: Name of the many-to-many relationship
+            record_id: ID of this entity's record
+            target_ids: List of target record IDs to unlink
+
+        Returns:
+            Count of links removed
+        """
+        count = 0
+        for target_id in target_ids:
+            if self.unlink(relationship_name, record_id, target_id):
+                count += 1
+        return count
 
     def add_field(
         self,
