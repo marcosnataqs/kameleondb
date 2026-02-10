@@ -377,3 +377,46 @@ class TestKameleonDBMaterialization:
 
         assert len(result.rows) == 1
         assert result.rows[0]["property_address"] == "123 Main St"
+
+    def test_reserved_field_names_rejected_on_create(self, memory_db: KameleonDB) -> None:
+        """Test that reserved system column names are rejected when creating entities.
+
+        Regression test for GitHub issue #27: Users should not be able to create
+        fields with names like 'created_at', 'updated_at', 'is_deleted', etc.
+        as these conflict with internal system columns.
+        """
+        from kameleondb.exceptions import ReservedFieldNameError
+
+        # Try to create entity with reserved field name 'created_at'
+        with pytest.raises(ReservedFieldNameError) as exc_info:
+            memory_db.create_entity(
+                "EventLog",
+                fields=[
+                    {"name": "event_type", "type": "string", "required": True},
+                    {"name": "created_at", "type": "datetime"},  # Reserved!
+                ],
+            )
+
+        assert "created_at" in str(exc_info.value)
+        assert "reserved" in str(exc_info.value).lower()
+
+    def test_reserved_field_names_rejected_on_add_field(self, memory_db: KameleonDB) -> None:
+        """Test that reserved names are also rejected when adding fields later."""
+        from kameleondb.exceptions import ReservedFieldNameError
+
+        # Create entity without reserved fields
+        entity = memory_db.create_entity(
+            "EventLog",
+            fields=[{"name": "event_type", "type": "string"}],
+        )
+
+        # Try to add a field with reserved name
+        with pytest.raises(ReservedFieldNameError) as exc_info:
+            entity.add_field("updated_at", field_type="datetime")
+
+        assert "updated_at" in str(exc_info.value)
+        assert "reserved" in str(exc_info.value).lower()
+
+        # Also test 'is_deleted'
+        with pytest.raises(ReservedFieldNameError):
+            entity.add_field("is_deleted", field_type="bool")
