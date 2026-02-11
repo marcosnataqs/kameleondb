@@ -132,14 +132,14 @@ class TestSchemaCommands:
         result = runner.invoke(app, ["-d", temp_db, "schema", "describe", "NonExistent"])
         assert result.exit_code == 1
 
-    def test_schema_add_field(self, temp_db: str) -> None:
-        """Test adding a field to an existing entity."""
+    def test_schema_alter_add_field(self, temp_db: str) -> None:
+        """Test adding a field using schema alter."""
         # Create entity first
         runner.invoke(app, ["-d", temp_db, "schema", "create", "Task", "-f", "title:string"])
 
-        # Add a new field
+        # Add a new field using alter --add
         result = runner.invoke(
-            app, ["-d", temp_db, "--json", "schema", "add-field", "Task", "priority:int"]
+            app, ["-d", temp_db, "--json", "schema", "alter", "Task", "--add", "priority:int"]
         )
         assert result.exit_code == 0, f"Failed with: {result.stdout}"
 
@@ -151,20 +151,29 @@ class TestSchemaCommands:
         field_names = [f["name"] for f in data["fields"]]
         assert "priority" in field_names
 
-    def test_schema_add_reserved_field_error(self, temp_db: str) -> None:
+    def test_schema_alter_reserved_field_error(self, temp_db: str) -> None:
         """Test that adding reserved field names is rejected."""
         runner.invoke(
             app, ["-d", temp_db, "schema", "create", "TaskReserved", "-f", "title:string"]
         )
         result = runner.invoke(
             app,
-            ["-d", temp_db, "--json", "schema", "add-field", "TaskReserved", "created_at:datetime"],
+            [
+                "-d",
+                temp_db,
+                "--json",
+                "schema",
+                "alter",
+                "TaskReserved",
+                "--add",
+                "created_at:datetime",
+            ],
         )
         assert result.exit_code == 1
         assert "reserved" in result.stdout.lower() or "created_at" in result.stdout.lower()
 
-    def test_schema_drop_field(self, temp_db: str) -> None:
-        """Test dropping a field from an entity."""
+    def test_schema_alter_drop_field(self, temp_db: str) -> None:
+        """Test dropping a field using schema alter."""
         # Create entity with multiple fields
         runner.invoke(
             app,
@@ -181,9 +190,10 @@ class TestSchemaCommands:
             ],
         )
 
-        # Drop a field
+        # Drop a field using alter --drop --force
         result = runner.invoke(
-            app, ["-d", temp_db, "--json", "schema", "drop-field", "Note", "content"]
+            app,
+            ["-d", temp_db, "--json", "schema", "alter", "Note", "--drop", "content", "--force"],
         )
         assert result.exit_code == 0, f"Failed with: {result.stdout}"
 
@@ -222,13 +232,13 @@ class TestSchemaCommands:
         )
         assert result.exit_code == 0, f"Failed with: {result.stdout}"
 
-    def test_schema_stats(self, temp_db: str) -> None:
+    def test_schema_info(self, temp_db: str) -> None:
         """Test schema stats command."""
         # Create some entities
         runner.invoke(app, ["-d", temp_db, "schema", "create", "A", "-f", "x:string"])
         runner.invoke(app, ["-d", temp_db, "schema", "create", "B", "-f", "y:int"])
 
-        result = runner.invoke(app, ["-d", temp_db, "--json", "schema", "stats"])
+        result = runner.invoke(app, ["-d", temp_db, "--json", "schema", "info"])
         assert result.exit_code == 0, f"Failed with: {result.stdout}"
         data = json.loads(result.stdout)
         # Stats returns a list of entity stats
@@ -375,7 +385,7 @@ class TestDataCommands:
         data = json.loads(result.stdout)
         assert len(data) == 2
 
-    def test_data_stats(self, temp_db: str) -> None:
+    def test_data_info(self, temp_db: str) -> None:
         """Test data stats command."""
         runner.invoke(app, ["-d", temp_db, "schema", "create", "Counted", "-f", "n:int"])
         for i in range(5):
@@ -383,7 +393,7 @@ class TestDataCommands:
                 app, ["-d", temp_db, "--json", "data", "insert", "Counted", f'{{"n": {i}}}']
             )
 
-        result = runner.invoke(app, ["-d", temp_db, "--json", "data", "stats", "Counted"])
+        result = runner.invoke(app, ["-d", temp_db, "--json", "data", "info", "Counted"])
         assert result.exit_code == 0
         data = json.loads(result.stdout)
         assert data["entity"] == "Counted"

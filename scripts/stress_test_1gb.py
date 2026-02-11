@@ -26,7 +26,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from kameleondb import KameleonDB
 
-
 # =============================================================================
 # Data Generation
 # =============================================================================
@@ -291,7 +290,7 @@ class StressTest:
         total_bytes += customer_bytes
         self.log(f"  Generated in {gen_time:.1f}s ({customer_bytes / 1024 / 1024:.1f} MB)")
 
-        self.log(f"Inserting customers...")
+        self.log("Inserting customers...")
         start = time.time()
         customer_entity = self.db.entity("Customer")
         for i in range(0, len(customers), self.BATCH_SIZE):
@@ -315,7 +314,7 @@ class StressTest:
         total_bytes += product_bytes
         self.log(f"  Generated in {gen_time:.1f}s ({product_bytes / 1024 / 1024:.1f} MB)")
 
-        self.log(f"Inserting products...")
+        self.log("Inserting products...")
         start = time.time()
         product_entity = self.db.entity("Product")
         for i in range(0, len(products), self.BATCH_SIZE):
@@ -526,7 +525,7 @@ class StressTest:
     def run(self) -> dict:
         """Run the full stress test."""
         self.log("=" * 60)
-        self.log(f"Starting 1GB Stress Test")
+        self.log("Starting 1GB Stress Test")
         self.log("=" * 60)
 
         overall_start = time.time()
