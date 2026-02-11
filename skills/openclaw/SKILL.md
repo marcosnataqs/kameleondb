@@ -1,6 +1,6 @@
 ---
 name: kameleondb
-version: 0.1.4
+version: 0.1.5
 description: Store and query structured data without planning schemas upfront. Use when you need to remember information, track entities across conversations, build knowledge bases, ingest API data, store user preferences, create CRM systems, or maintain any persistent state. Automatically evolves data structure as you discover new fields. No migrations, no schema design - just store data and query it.
 metadata: {"openclaw":{"emoji":"🦎","requires":{"bins":["kameleondb"],"env":["KAMELEONDB_URL"]},"primaryEnv":"KAMELEONDB_URL","homepage":"https://github.com/marcosnataqs/kameleondb"}}
 ---
@@ -76,7 +76,7 @@ kameleondb --json schema create Contact \
 kameleondb --json data insert Contact '{"name":"Alice Johnson","email":"alice@acme.com"}'
 
 # Later: found their LinkedIn!
-kameleondb --json schema add-field Contact "linkedin_url:string" \
+kameleondb --json schema alter Contact --add "linkedin_url:string" \
   --reason "Found LinkedIn profiles for contacts"
 
 # Update Alice's record
@@ -142,13 +142,20 @@ kameleondb --json query run \
 
 ## How It Works for Agents
 
-### Add Fields Anytime
-Don't know all fields upfront? No problem. Add them when you discover them:
+### Evolve Schema Anytime
+Don't know all fields upfront? No problem. Add, drop, or rename them when you discover patterns:
 ```bash
-kameleondb --json schema add-field Contact "twitter_handle:string" \
+# Add a new field
+kameleondb --json schema alter Contact --add "twitter_handle:string" \
   --reason "Found Twitter profiles for 30% of contacts"
+
+# Drop obsolete fields
+kameleondb --json schema alter Contact --drop "legacy_field" --force
+
+# Do multiple operations at once
+kameleondb --json schema alter Contact --add "linkedin:string" --drop "old_social" --reason "Consolidating social fields"
 ```
-Old records won't break - they just show `null` for new fields.
+Old records won't break - they just show `null` for new fields, and dropped fields are soft-deleted.
 
 ### Get Performance Hints
 Queries tell you when they're slow and how to fix it:
@@ -186,11 +193,46 @@ kameleondb --json query run "SELECT ... FROM ..."
 
 Add `--json` to any command for machine-readable output.
 
-**Schema**: `list`, `create`, `describe`, `add-field`, `drop`, `context`
-**Data**: `insert`, `get`, `update`, `delete`, `list`
-**Query**: `run`, `validate`
+**Schema**: `list`, `create`, `describe`, `alter`, `drop`, `info`, `context`
+**Data**: `insert`, `get`, `update`, `delete`, `list`, `link`, `unlink`, `get-linked`, `info`
+**Query**: `run`
 **Storage**: `status`, `materialize`, `dematerialize`
 **Admin**: `init`, `info`, `changelog`
+
+### The `alter` Command (Schema Evolution)
+
+Instead of separate `add-field` and `drop-field` commands, use the unified `alter`:
+
+```bash
+# Add a field
+kameleondb --json schema alter Contact --add "phone:string:indexed"
+
+# Drop a field
+kameleondb --json schema alter Contact --drop legacy_field --force
+
+# Rename a field
+kameleondb --json schema alter Contact --rename "old_name:new_name"
+
+# Multiple operations at once
+kameleondb --json schema alter Contact --add "new:string" --drop old --reason "Cleanup"
+```
+
+### The `link`/`unlink` Commands (M2M Relationships)
+
+For many-to-many relationships:
+
+```bash
+# Link a product to tags
+kameleondb --json data link Product abc123 tags tag-1
+kameleondb --json data link Product abc123 tags -t tag-1 -t tag-2 -t tag-3
+
+# Unlink
+kameleondb --json data unlink Product abc123 tags tag-1
+kameleondb --json data unlink Product abc123 tags --all
+
+# Get linked records
+kameleondb --json data get-linked Product abc123 tags
+```
 
 Run `kameleondb --help` or `kameleondb <command> --help` for details.
 
@@ -203,9 +245,9 @@ kameleondb --json schema create Person --field "name:string:required"
 kameleondb --json data insert Person '{"name":"Alice"}'
 
 # Learn more over time
-kameleondb --json schema add-field Person "email:string"
-kameleondb --json schema add-field Person "company:string"
-kameleondb --json schema add-field Person "last_contacted:datetime"
+kameleondb --json schema alter Person --add "email:string"
+kameleondb --json schema alter Person --add "company:string"
+kameleondb --json schema alter Person --add "last_contacted:datetime"
 
 # Update as you learn
 kameleondb --json data update Person <id> '{"email":"alice@example.com","last_contacted":"2026-02-07"}'
@@ -220,8 +262,8 @@ kameleondb --json schema create ScrapedData --field "source:string" --field "raw
 kameleondb --json data insert ScrapedData '{"source":"website.com","raw":{"title":"...","data":{...}}}'
 
 # Discover patterns, then structure it
-kameleondb --json schema add-field ScrapedData "title:string"
-kameleondb --json schema add-field ScrapedData "price:float"
+kameleondb --json schema alter ScrapedData --add "title:string"
+kameleondb --json schema alter ScrapedData --add "price:float"
 
 # Migrate data progressively as you normalize it
 ```
@@ -232,16 +274,16 @@ kameleondb --json schema add-field ScrapedData "price:float"
 kameleondb --json schema create Task --field "title:string:required"
 
 # Add status tracking
-kameleondb --json schema add-field Task "status:string"
+kameleondb --json schema alter Task --add "status:string"
 
 # Add priority later
-kameleondb --json schema add-field Task "priority:string"
+kameleondb --json schema alter Task --add "priority:string"
 
 # Add assignee when team grows
-kameleondb --json schema add-field Task "assigned_to:string"
+kameleondb --json schema alter Task --add "assigned_to:string"
 
 # Add tags for categorization
-kameleondb --json schema add-field Task "tags:json"
+kameleondb --json schema alter Task --add "tags:json"
 
 # Schema grows with your needs - no migrations!
 ```
@@ -300,7 +342,7 @@ kameleondb --json admin changelog
 kameleondb --json schema create <Entity> --field "name:type"
 
 # Add field
-kameleondb --json schema add-field <Entity> "field:type"
+kameleondb --json schema alter <Entity> --add "field:type"
 
 # Insert data
 kameleondb --json data insert <Entity> '{"field":"value"}'
@@ -328,7 +370,7 @@ Examples: `"email:string:unique"`, `"score:int:indexed"`, `"tags:json"`
 
 2. **Real use case**: Think about what you need to track (contacts, tasks, facts, etc.) and create an entity for it
 
-3. **Evolve it**: As you discover new fields, add them with `schema add-field`
+3. **Evolve it**: As you discover new fields, add them with `schema alter`
 
 4. **Query it**: Use `schema context` to understand structure, then query with SQL
 
