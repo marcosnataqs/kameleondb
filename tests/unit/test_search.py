@@ -77,7 +77,7 @@ class TestSearchEngine:
         from kameleondb.search import SearchEngine
 
         engine = create_engine(f"sqlite:///{tmp_path}/test.db")
-        search = SearchEngine(engine, embedding_provider=None)
+        SearchEngine(engine, embedding_provider=None)
 
         # Check tables exist
         with engine.connect() as conn:
