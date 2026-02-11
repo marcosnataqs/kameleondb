@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-02-11
+
 ### Added
 
 **Many-to-Many Relationships (Spec 007)**
@@ -22,6 +24,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `RestrictDeleteError` when RESTRICT blocks deletion
 - Recursive cascade for nested relationships
 - `force` parameter to bypass RESTRICT when needed
+
+**Storage-Aware JOIN Hints**
+- Query engine now suggests JOINs between materialized entities
+- Hints guide agents to use proper SQL JOINs instead of in-memory lookups
+
+**CLI Commands for Relationships**
+- `schema add-relationship` - define relationships between entities
+- `schema add-m2m` - create many-to-many relationships with junction tables
+- `data link` - link records (single, multiple via `-t`, or bulk via `--from-file`)
+- `data unlink` - unlink records (single, multiple, or `--all`)
+- `data get-linked` - retrieve linked record IDs
+- `data info` - show record count and entity statistics
+- `schema info` - show entity field and relationship details
+
+**MCP Tools for Relationships**
+- `link` - link records in many-to-many relationships
+- `unlink` - unlink records from many-to-many relationships
+
+**Documentation**
+- Spec 008: Semantic Search (Layer 2) design document
+
+### Changed
+
+**CLI Simplification**
+- Consolidated `schema alter` with `--add`, `--drop`, `--rename` options (replaces separate `add-field`/`drop-field`)
+- Merged `link` + `link-many` into single `data link` command
+- Merged `unlink` + `unlink-many` into single `data unlink` command  
+- Renamed `data stats` → `data info`
+- Renamed `schema stats` → `schema info`
+
+### Fixed
+
+**Reserved Field Names**
+- Field definitions now reject reserved system column names (`id`, `entity_id`, `data`, `created_at`, `updated_at`, `is_deleted`)
+- Raises `InvalidFieldNameError` with clear message
+
+**SQLite Locking in M2M Operations**
+- Fixed nested connection issue during `add_relationship(type=many_to_many)` on SQLite file databases
+- Junction table creation now reuses the existing session connection
 
 ## [0.1.2] - 2026-02-07
 
@@ -130,6 +171,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Python 3.12
 - Python 3.13
 
-[Unreleased]: https://github.com/marcosnataqs/kameleondb/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/marcosnataqs/kameleondb/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/marcosnataqs/kameleondb/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/marcosnataqs/kameleondb/compare/v0.1.0...v0.1.2
 [0.1.0]: https://github.com/marcosnataqs/kameleondb/releases/tag/v0.1.0
