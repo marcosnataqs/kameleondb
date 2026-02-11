@@ -88,9 +88,7 @@ class TestSearchEngine:
 
             # FTS table should also exist
             result = conn.execute(
-                text(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='kdb_search_fts'"
-                )
+                text("SELECT name FROM sqlite_master WHERE type='table' AND name='kdb_search_fts'")
             )
             assert result.fetchone() is not None
 
@@ -172,9 +170,7 @@ class TestSearchEngineBM25Only:
 
         # Verify it's indexed
         with engine.connect() as conn:
-            result = conn.execute(
-                text("SELECT COUNT(*) FROM kdb_search WHERE record_id = '1'")
-            )
+            result = conn.execute(text("SELECT COUNT(*) FROM kdb_search WHERE record_id = '1'"))
             assert result.scalar() == 1
 
         # Delete it
@@ -182,9 +178,7 @@ class TestSearchEngineBM25Only:
 
         # Verify it's gone
         with engine.connect() as conn:
-            result = conn.execute(
-                text("SELECT COUNT(*) FROM kdb_search WHERE record_id = '1'")
-            )
+            result = conn.execute(text("SELECT COUNT(*) FROM kdb_search WHERE record_id = '1'"))
             assert result.scalar() == 0
 
 

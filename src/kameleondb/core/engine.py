@@ -1808,8 +1808,7 @@ class KameleonDB:
         """
         if not self._search_engine:
             raise RuntimeError(
-                "Search requires embeddings. Initialize with: "
-                "KameleonDB(..., embeddings=True)"
+                "Search requires embeddings. Initialize with: KameleonDB(..., embeddings=True)"
             )
 
         results = self._search_engine.search(
@@ -1848,8 +1847,7 @@ class KameleonDB:
         """
         if not self._search_engine:
             raise RuntimeError(
-                "Reindex requires embeddings. Initialize with: "
-                "KameleonDB(..., embeddings=True)"
+                "Reindex requires embeddings. Initialize with: KameleonDB(..., embeddings=True)"
             )
 
         # Get entities to reindex
