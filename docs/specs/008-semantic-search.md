@@ -1,6 +1,6 @@
-# Spec 008: Semantic Search (Layer 2)
+# Spec 008: Hybrid Search (Layer 2)
 
-Layer 2 of KameleonDB — vector embeddings for semantic search across entities.
+Layer 2 of KameleonDB — hybrid search combining BM25 (keyword) and vector embeddings (semantic).
 
 ## Problem
 
@@ -10,18 +10,63 @@ Agents often need to find records by meaning, not just exact matches. Current st
 - "Show me products similar to this one"
 - "Any notes mentioning the Johnson account?"
 
+Neither keyword search nor semantic search alone is sufficient:
+- **Keywords miss synonyms:** "angry customer" won't find "frustrated client"
+- **Vectors miss exact terms:** "order #12345" may not match precisely
+
 ## Goals
 
-1. Selective field vectorization (not full records)
-2. Single embeddings table for simplicity
-3. Global search across all entities
-4. Per-entity and multi-entity search
-5. Lightweight local model (no API key required for dev)
-6. Production-ready model option (OpenAI)
+1. **Hybrid search by default** — combine BM25 + vectors automatically
+2. Selective field indexing (not full records)
+3. Single table for both FTS and embeddings
+4. Global search across all entities
+5. Per-entity and multi-entity search
+6. Lightweight local model (no API key required for dev)
+7. Production-ready model option (OpenAI)
 
 ## Design Decisions
 
-### 1. Selective Field Embedding
+### 1. Hybrid Search Architecture
+
+Every search query runs both BM25 and vector similarity, then combines results.
+
+**Why hybrid by default:**
+
+| Query | BM25 (keyword) | Vectors (semantic) | Hybrid |
+|-------|----------------|-------------------|--------|
+| "order #12345" | ✅ Exact match | ❌ May miss | ✅ |
+| "angry customer" | ❌ Misses "frustrated" | ✅ Semantic match | ✅ |
+| "Johnson shipping" | ✅ Proper noun | ✅ Context | ✅✅ |
+
+**Algorithm: Reciprocal Rank Fusion (RRF)**
+
+```python
+def hybrid_search(query: str, limit: int = 10) -> list[SearchResult]:
+    # Run both searches
+    bm25_results = bm25_search(query, limit=limit * 2)
+    vector_results = vector_search(query, limit=limit * 2)
+    
+    # Combine with RRF
+    scores = {}
+    k = 60  # RRF constant
+    
+    for rank, result in enumerate(bm25_results):
+        scores[result.id] = scores.get(result.id, 0) + 1 / (k + rank + 1)
+    
+    for rank, result in enumerate(vector_results):
+        scores[result.id] = scores.get(result.id, 0) + 1 / (k + rank + 1)
+    
+    # Sort by combined score
+    ranked = sorted(scores.items(), key=lambda x: -x[1])
+    return [get_record(id) for id, score in ranked[:limit]]
+```
+
+**Rationale for RRF:**
+- Simple, no tuning required
+- Works well when scores aren't comparable (BM25 vs cosine similarity)
+- Used by Elasticsearch, Weaviate, and others
+
+### 2. Selective Field Indexing
 
 Only embed configured text fields, not entire records.
 
@@ -49,17 +94,22 @@ db.create_entity(
 "name: Wireless Headphones | description: Premium noise-cancelling headphones with 30-hour battery life"
 ```
 
-### 2. Single Embeddings Table
+### 3. Single Search Table (Embeddings + FTS)
 
 ```sql
-CREATE TABLE kdb_embeddings (
+CREATE TABLE kdb_search (
     id VARCHAR(36) PRIMARY KEY,
     entity_name VARCHAR(255) NOT NULL,
     record_id VARCHAR(36) NOT NULL,
+    
+    -- Text content (for BM25)
+    content TEXT NOT NULL,
+    
+    -- Vector embedding (for semantic)
     embedding VECTOR(384),          -- pgvector for PostgreSQL
-    -- embedding BLOB,              -- sqlite-vec for SQLite
-    embedded_text TEXT,             -- Source text (for debugging/reindexing)
-    model VARCHAR(100) NOT NULL,    -- 'all-MiniLM-L6-v2', 'text-embedding-3-small'
+    
+    -- Metadata
+    model VARCHAR(100) NOT NULL,    -- 'all-MiniLM-L6-v2'
     dimensions INTEGER NOT NULL,    -- 384
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP,
@@ -68,21 +118,44 @@ CREATE TABLE kdb_embeddings (
 );
 
 -- Indexes
-CREATE INDEX ix_embeddings_entity ON kdb_embeddings(entity_name);
-CREATE INDEX ix_embeddings_record ON kdb_embeddings(record_id);
+CREATE INDEX ix_search_entity ON kdb_search(entity_name);
+CREATE INDEX ix_search_record ON kdb_search(record_id);
 
--- Vector index (pgvector)
-CREATE INDEX ix_embeddings_vector ON kdb_embeddings 
+-- Vector index (pgvector HNSW)
+CREATE INDEX ix_search_vector ON kdb_search 
     USING hnsw (embedding vector_cosine_ops);
+
+-- Full-text search index (PostgreSQL)
+ALTER TABLE kdb_search ADD COLUMN tsv tsvector
+    GENERATED ALWAYS AS (to_tsvector('english', content)) STORED;
+CREATE INDEX ix_search_fts ON kdb_search USING gin(tsv);
+```
+
+**SQLite variant (FTS5 + sqlite-vec):**
+
+```sql
+-- FTS5 for BM25
+CREATE VIRTUAL TABLE kdb_search_fts USING fts5(
+    entity_name,
+    record_id UNINDEXED,
+    content,
+    tokenize='porter unicode61'
+);
+
+-- sqlite-vec for vectors
+CREATE VIRTUAL TABLE kdb_search_vec USING vec0(
+    record_id TEXT PRIMARY KEY,
+    embedding FLOAT[384]
+);
 ```
 
 **Rationale:**
-- Global search = one query, no UNIONs
-- Per-entity search = `WHERE entity_name = ?`
-- Simpler migrations and backups
-- pgvector handles millions of vectors with HNSW
+- Single table = simpler queries and maintenance
+- Both BM25 and vector search in one place
+- Global search = one query (PostgreSQL) or two queries merged (SQLite)
+- Per-entity search = add `WHERE entity_name = ?`
 
-### 3. Search Modes
+### 4. Search Modes
 
 #### Global Search (all entities)
 ```python
@@ -107,7 +180,7 @@ results = db.search("Johnson", entities=["Customer", "Contact"], limit=10)
 # Searches both Customer and Contact
 ```
 
-### 4. Embedding Models
+### 5. Embedding Models
 
 | Environment | Model | Dimensions | Provider |
 |-------------|-------|------------|----------|
@@ -312,53 +385,72 @@ kameleondb embeddings config --provider openai --model text-embedding-3-small
 
 ## Backend-Specific Implementation
 
-### PostgreSQL (pgvector)
+### PostgreSQL (pgvector + tsvector)
 
 ```sql
 -- Enable extension
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- Embedding column
-embedding VECTOR(384)
-
--- HNSW index for fast similarity search
-CREATE INDEX ix_embeddings_vector ON kdb_embeddings 
-    USING hnsw (embedding vector_cosine_ops)
-    WITH (m = 16, ef_construction = 64);
-
--- Search query
-SELECT entity_name, record_id, 1 - (embedding <=> $1) AS score
-FROM kdb_embeddings
-WHERE entity_name = $2  -- optional filter
-ORDER BY embedding <=> $1
+-- Hybrid search query
+WITH bm25_results AS (
+    SELECT record_id, ts_rank(tsv, query) AS score,
+           ROW_NUMBER() OVER (ORDER BY ts_rank(tsv, query) DESC) AS rank
+    FROM kdb_search, plainto_tsquery('english', $1) query
+    WHERE tsv @@ query
+      AND ($2 IS NULL OR entity_name = $2)
+    LIMIT $3 * 2
+),
+vector_results AS (
+    SELECT record_id, 1 - (embedding <=> $4) AS score,
+           ROW_NUMBER() OVER (ORDER BY embedding <=> $4) AS rank
+    FROM kdb_search
+    WHERE ($2 IS NULL OR entity_name = $2)
+    ORDER BY embedding <=> $4
+    LIMIT $3 * 2
+),
+rrf_scores AS (
+    SELECT record_id, SUM(1.0 / (60 + rank)) AS score
+    FROM (
+        SELECT record_id, rank FROM bm25_results
+        UNION ALL
+        SELECT record_id, rank FROM vector_results
+    ) combined
+    GROUP BY record_id
+)
+SELECT r.record_id, r.score, s.entity_name, s.content
+FROM rrf_scores r
+JOIN kdb_search s ON s.record_id = r.record_id
+ORDER BY r.score DESC
 LIMIT $3;
 ```
 
-### SQLite (sqlite-vec)
+### SQLite (FTS5 + sqlite-vec)
 
 ```python
-# sqlite-vec uses different syntax
-import sqlite_vec
-
-# Load extension
-db.execute("SELECT load_extension('vec0')")
-
-# Create virtual table
-db.execute("""
-    CREATE VIRTUAL TABLE kdb_vec_embeddings USING vec0(
-        id TEXT PRIMARY KEY,
-        embedding FLOAT[384]
-    )
-""")
-
-# Search query
-db.execute("""
-    SELECT id, distance
-    FROM kdb_vec_embeddings
-    WHERE embedding MATCH ?
-    ORDER BY distance
-    LIMIT ?
-""", [query_embedding, limit])
+def hybrid_search_sqlite(query: str, entity: str = None, limit: int = 10):
+    # BM25 search via FTS5
+    bm25_sql = """
+        SELECT record_id, bm25(kdb_search_fts) AS score
+        FROM kdb_search_fts
+        WHERE kdb_search_fts MATCH ?
+        ORDER BY bm25(kdb_search_fts)
+        LIMIT ?
+    """
+    bm25_results = db.execute(bm25_sql, [query, limit * 2])
+    
+    # Vector search via sqlite-vec
+    query_embedding = embed(query)
+    vec_sql = """
+        SELECT record_id, distance
+        FROM kdb_search_vec
+        WHERE embedding MATCH ?
+        ORDER BY distance
+        LIMIT ?
+    """
+    vec_results = db.execute(vec_sql, [query_embedding, limit * 2])
+    
+    # Combine with RRF
+    return reciprocal_rank_fusion(bm25_results, vec_results, limit)
 ```
 
 ## Dependencies
@@ -402,14 +494,14 @@ sqlite-vec = [
 
 ## Open Questions
 
-1. **Hybrid search?** Combine vector similarity with structured filters:
+1. **Structured filters in search?** Combine hybrid search with SQL filters:
    ```python
    db.search("complaint", entity="Ticket", where={"status": "open"})
    ```
 
-2. **Embedding updates:** Re-embed on every update, or batch periodically?
+2. **Index updates:** Re-index on every update, or batch periodically?
 
-3. **Multiple embedding models per entity?** Probably overkill for v1.
+3. **Stemming/tokenization config?** Porter stemmer is default, but may need options.
 
 ## Success Metrics
 
