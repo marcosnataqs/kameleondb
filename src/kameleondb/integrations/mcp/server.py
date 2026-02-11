@@ -455,6 +455,117 @@ def kameleondb_list_relationships(
         return json.dumps({"error": str(e)})
 
 
+@mcp.tool()
+def kameleondb_link(
+    entity_name: str,
+    record_id: str,
+    relationship_name: str,
+    target_ids: list[str],
+) -> str:
+    """Link records in a many-to-many relationship.
+
+    Creates links between a source record and one or more target records
+    in a many-to-many relationship (junction table).
+
+    Args:
+        entity_name: Source entity name
+        record_id: Source record ID
+        relationship_name: Name of the M2M relationship
+        target_ids: List of target record IDs to link
+
+    Returns:
+        JSON with count of links created.
+
+    Example:
+        kameleondb_link(
+            entity_name="Product",
+            record_id="prod-123",
+            relationship_name="tags",
+            target_ids=["tag-1", "tag-2", "tag-3"]
+        )
+    """
+    try:
+        entity = get_db().entity(entity_name)
+        if len(target_ids) == 1:
+            created = entity.link(
+                relationship_name=relationship_name,
+                record_id=record_id,
+                target_id=target_ids[0],
+                created_by="mcp",
+            )
+            return json.dumps({"linked": 1 if created else 0, "already_existed": not created})
+        else:
+            count = entity.link_many(
+                relationship_name=relationship_name,
+                record_id=record_id,
+                target_ids=target_ids,
+                created_by="mcp",
+            )
+            return json.dumps({"linked": count})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+def kameleondb_unlink(
+    entity_name: str,
+    record_id: str,
+    relationship_name: str,
+    target_ids: list[str] | None = None,
+    unlink_all: bool = False,
+) -> str:
+    """Unlink records in a many-to-many relationship.
+
+    Removes links between a source record and target records.
+    Either specify target_ids or use unlink_all=True to remove all links.
+
+    Args:
+        entity_name: Source entity name
+        record_id: Source record ID
+        relationship_name: Name of the M2M relationship
+        target_ids: List of target record IDs to unlink (optional)
+        unlink_all: If True, unlink all targets for this relationship
+
+    Returns:
+        JSON with count of links removed.
+
+    Example:
+        # Unlink specific targets
+        kameleondb_unlink("Product", "prod-123", "tags", target_ids=["tag-1", "tag-2"])
+
+        # Unlink all
+        kameleondb_unlink("Product", "prod-123", "tags", unlink_all=True)
+    """
+    try:
+        entity = get_db().entity(entity_name)
+
+        if unlink_all:
+            count = entity.unlink_all(
+                relationship_name=relationship_name,
+                record_id=record_id,
+            )
+            return json.dumps({"unlinked": count})
+        elif target_ids:
+            if len(target_ids) == 1:
+                removed = entity.unlink(
+                    relationship_name=relationship_name,
+                    record_id=record_id,
+                    target_id=target_ids[0],
+                )
+                return json.dumps({"unlinked": 1 if removed else 0})
+            else:
+                count = entity.unlink_many(
+                    relationship_name=relationship_name,
+                    record_id=record_id,
+                    target_ids=target_ids,
+                )
+                return json.dumps({"unlinked": count})
+        else:
+            return json.dumps({"error": "Provide target_ids or set unlink_all=True"})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
 # === LLM-Native Query Generation Tools (ADR-002) ===
 
 

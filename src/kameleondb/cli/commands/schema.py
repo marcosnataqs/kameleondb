@@ -201,69 +201,22 @@ def schema_drop(
         cli_ctx.close()
 
 
-@app.command("add-field")
-def schema_add_field(
+@app.command("alter")
+def schema_alter(
     ctx: typer.Context,
     entity_name: Annotated[str, typer.Argument(help="Entity name")],
-    field_spec: Annotated[
-        str,
-        typer.Argument(help="Field spec: name:type[:modifier]"),
-    ],
-    reason: Annotated[
-        str | None,
-        typer.Option("--reason", help="Reason for change (audit trail)"),
+    add: Annotated[
+        list[str] | None,
+        typer.Option("--add", "-a", help="Add field: name:type[:modifier] (repeatable)"),
     ] = None,
-    created_by: Annotated[
-        str | None,
-        typer.Option("--created-by", help="Creator identifier for audit trail"),
+    drop: Annotated[
+        list[str] | None,
+        typer.Option("--drop", "-d", help="Drop field by name (repeatable)"),
     ] = None,
-) -> None:
-    """Add a field to an existing entity.
-
-    Examples:
-
-        kameleondb schema add-field Contact "phone:string"
-        kameleondb schema add-field Contact "score:int:indexed" --reason "Added for ranking"
-    """
-    cli_ctx: CLIContext = ctx.obj
-    formatter = OutputFormatter(cli_ctx.json_output)
-
-    try:
-        db = cli_ctx.get_db()
-        entity = db.entity(entity_name)
-
-        # Parse field spec
-        field = parse_field_spec(field_spec)
-
-        # Add field
-        entity.add_field(
-            name=field["name"],
-            field_type=field.get("type", "string"),
-            required=field.get("required", False),
-            unique=field.get("unique", False),
-            indexed=field.get("indexed", False),
-            default=field.get("default"),
-            created_by=created_by,
-            reason=reason,
-            if_not_exists=False,
-        )
-
-        formatter.print_success(
-            f"Field '{field['name']}' added to '{entity_name}'",
-            {"field": field["name"], "type": field["type"]},
-        )
-    except Exception as e:
-        formatter.print_error(e)
-        raise typer.Exit(code=1)
-    finally:
-        cli_ctx.close()
-
-
-@app.command("drop-field")
-def schema_drop_field(
-    ctx: typer.Context,
-    entity_name: Annotated[str, typer.Argument(help="Entity name")],
-    field_name: Annotated[str, typer.Argument(help="Field name to drop")],
+    rename: Annotated[
+        list[str] | None,
+        typer.Option("--rename", "-r", help="Rename field: old_name:new_name (repeatable)"),
+    ] = None,
     reason: Annotated[
         str | None,
         typer.Option("--reason", help="Reason for change (audit trail)"),
@@ -274,26 +227,42 @@ def schema_drop_field(
     ] = None,
     force: Annotated[
         bool,
-        typer.Option("--force", help="Skip confirmation prompt"),
+        typer.Option("--force", help="Skip confirmation for drops"),
     ] = False,
 ) -> None:
-    """Drop a field from an existing entity (soft delete).
+    """Alter an entity's schema (add, drop, rename fields).
 
-    The field is marked as inactive and no longer accessible through queries,
-    but existing data in the JSONB column is preserved.
+    Consolidates schema evolution operations. Changes apply in order: add -> rename -> drop.
 
     Examples:
 
-        kameleondb schema drop-field Contact phone_number
-        kameleondb schema drop-field Contact legacy_field --reason "Field deprecated"
+        # Add a field
+        kameleondb schema alter Contact --add "phone:string"
+
+        # Add multiple fields
+        kameleondb schema alter Contact --add "phone:string:indexed" --add "score:int"
+
+        # Drop a field
+        kameleondb schema alter Contact --drop legacy_field --force
+
+        # Rename a field
+        kameleondb schema alter Contact --rename "old_name:new_name"
+
+        # Combined operations
+        kameleondb schema alter Contact --add "phone:string" --drop legacy --reason "Cleanup"
     """
     cli_ctx: CLIContext = ctx.obj
     formatter = OutputFormatter(cli_ctx.json_output)
 
-    # Confirmation prompt
-    if not force and not cli_ctx.json_output:
+    # Check if any operation specified
+    if not add and not drop and not rename:
+        formatter.print_error(Exception("No operations specified. Use --add, --drop, or --rename"))
+        raise typer.Exit(code=1)
+
+    # Confirmation for drops
+    if drop and not force and not cli_ctx.json_output:
         confirm = typer.confirm(
-            f"Are you sure you want to drop field '{field_name}' from '{entity_name}'?"
+            f"Are you sure you want to drop field(s) {drop} from '{entity_name}'?"
         )
         if not confirm:
             typer.echo("Cancelled.")
@@ -303,16 +272,55 @@ def schema_drop_field(
         db = cli_ctx.get_db()
         entity = db.entity(entity_name)
 
-        # Drop field
-        entity.drop_field(
-            name=field_name,
+        # Parse add fields
+        add_fields = None
+        if add:
+            add_fields = []
+            for spec in add:
+                field = parse_field_spec(spec)
+                add_fields.append(
+                    {
+                        "name": field["name"],
+                        "type": field.get("type", "string"),
+                        "required": field.get("required", False),
+                        "unique": field.get("unique", False),
+                        "indexed": field.get("indexed", False),
+                        "default": field.get("default"),
+                    }
+                )
+
+        # Parse renames
+        rename_fields = None
+        if rename:
+            rename_fields = {}
+            for spec in rename:
+                parts = spec.split(":")
+                if len(parts) != 2:
+                    raise ValueError(f"Invalid rename spec '{spec}'. Use old_name:new_name")
+                rename_fields[parts[0]] = parts[1]
+
+        # Apply alterations
+        info = entity.alter(
+            add_fields=add_fields,
+            drop_fields=drop,
+            rename_fields=rename_fields,
+            modify_fields=None,
             created_by=created_by,
             reason=reason,
         )
 
+        # Build summary
+        changes = []
+        if add:
+            changes.append(f"added {len(add)} field(s)")
+        if rename:
+            changes.append(f"renamed {len(rename)} field(s)")
+        if drop:
+            changes.append(f"dropped {len(drop)} field(s)")
+
         formatter.print_success(
-            f"Field '{field_name}' dropped from '{entity_name}'",
-            {"field": field_name, "entity": entity_name},
+            f"Altered '{entity_name}': {', '.join(changes)}",
+            {"entity": entity_name, "fields": len(info.fields)},
         )
     except Exception as e:
         formatter.print_error(e)
@@ -481,8 +489,8 @@ def schema_add_m2m(
         cli_ctx.close()
 
 
-@app.command("stats")
-def schema_stats(
+@app.command("info")
+def schema_info(
     ctx: typer.Context,
     entity_name: Annotated[
         str | None,
