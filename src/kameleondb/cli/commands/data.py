@@ -1,5 +1,6 @@
 """Data CRUD commands."""
 
+import contextlib
 import json
 from typing import Annotated, Any
 
@@ -791,8 +792,22 @@ def data_list(
         result = db.execute_sql(sql, read_only=True)
         records = result.rows
 
+        # Parse JSON data field for each record
+        for record in records:
+            if isinstance(record.get("data"), str):
+                with contextlib.suppress(json.JSONDecodeError):
+                    record["data"] = json.loads(record["data"])
+
         if cli_ctx.json_output:
-            formatter.print_data(records)
+            # Return structured object with metadata (fixes #43)
+            formatter.print_data(
+                {
+                    "data": records,
+                    "count": len(records),
+                    "limit": limit,
+                    "offset": offset,
+                }
+            )
         else:
             if not records:
                 typer.echo(f"No records found for {entity_name}")
