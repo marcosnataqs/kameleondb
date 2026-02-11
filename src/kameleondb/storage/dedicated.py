@@ -371,6 +371,7 @@ class DedicatedTableManager:
         target_entity: EntityDefinition,
         source_fk_column: str | None = None,
         target_fk_column: str | None = None,
+        connection: Any | None = None,
     ) -> str:
         """Create a junction table for many-to-many relationship.
 
@@ -379,6 +380,7 @@ class DedicatedTableManager:
             target_entity: Target entity definition
             source_fk_column: Column name for source FK (default: {source}_id)
             target_fk_column: Column name for target FK (default: {target}_id)
+            connection: Optional existing connection to use (avoids SQLite locking)
 
         Returns:
             The created junction table name
@@ -417,8 +419,13 @@ class DedicatedTableManager:
         metadata = MetaData()
         table = Table(table_name, metadata, *columns, *indexes)
 
-        with self._engine.begin() as conn:
-            table.create(conn)
+        if connection is not None:
+            # Use provided connection (avoids SQLite file locking issues)
+            table.create(connection)
+        else:
+            # Create new connection (works for PostgreSQL, may lock on SQLite)
+            with self._engine.begin() as conn:
+                table.create(conn)
 
         return table_name
 
