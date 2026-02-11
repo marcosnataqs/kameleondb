@@ -1145,11 +1145,13 @@ class SchemaEngine:
         target_fk_column = f"{target_entity.name.lower()}_id"
 
         # Create the actual junction table
+        # Pass the session's connection to avoid SQLite file locking issues
         table_name = manager.create_junction_table(
             source_entity=source_entity,
             target_entity=target_entity,
             source_fk_column=source_fk_column,
             target_fk_column=target_fk_column,
+            connection=session.connection(),
         )
 
         # Create junction table metadata record
