@@ -266,6 +266,35 @@ class TestDataCommands:
         assert "id" in data
         assert data["success"] is True
 
+    def test_data_insert_json_array(self, temp_db: str) -> None:
+        """Test batch inserting data using inline JSON array.
+
+        Regression test for GitHub issue #46: Inline JSON array insert fails
+        with 'unhashable type: dict'.
+        """
+        # Create entity
+        runner.invoke(
+            app, ["-d", temp_db, "schema", "create", "BatchItem", "-f", "name:string"]
+        )
+
+        # Insert multiple records using inline JSON array
+        result = runner.invoke(
+            app,
+            ["-d", temp_db, "--json", "data", "insert", "BatchItem", '[{"name": "A"}, {"name": "B"}, {"name": "C"}]'],
+        )
+        assert result.exit_code == 0, f"Failed with: {result.stdout}"
+        data = json.loads(result.stdout)
+        assert data["success"] is True
+        assert data["count"] == 3
+        assert "ids" in data
+        assert len(data["ids"]) == 3
+
+        # Verify records were inserted
+        list_result = runner.invoke(app, ["-d", temp_db, "--json", "data", "list", "BatchItem"])
+        assert list_result.exit_code == 0
+        records = json.loads(list_result.stdout)
+        assert len(records) == 3
+
     def test_data_get(self, temp_db: str) -> None:
         """Test getting a record by ID."""
         # Create and insert

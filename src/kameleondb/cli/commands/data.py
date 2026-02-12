@@ -41,6 +41,9 @@ def data_insert(
         # Inline JSON (single record)
         kameleondb data insert Contact '{"name": "John", "email": "john@example.com"}'
 
+        # Inline JSON array (batch insert)
+        kameleondb data insert Contact '[{"name": "Alice"}, {"name": "Bob"}]'
+
         # From JSON file (single record)
         kameleondb data insert Contact --from-file contact.json
 
@@ -75,11 +78,21 @@ def data_insert(
         elif data_json:
             # Parse inline JSON
             data = json.loads(data_json)
-            record_id = entity.insert(data, created_by=created_by)
-            formatter.print_success(
-                "Inserted record",
-                {"id": record_id},
-            )
+
+            if isinstance(data, list):
+                # Batch insert from inline JSON array
+                record_ids = entity.insert_many(data, created_by=created_by)
+                formatter.print_success(
+                    f"Inserted {len(record_ids)} records",
+                    {"count": len(record_ids), "ids": record_ids[:5]},  # Show first 5
+                )
+            else:
+                # Single record insert
+                record_id = entity.insert(data, created_by=created_by)
+                formatter.print_success(
+                    "Inserted record",
+                    {"id": record_id},
+                )
         else:
             raise typer.BadParameter("Either provide data as JSON string or use --from-file")
 
