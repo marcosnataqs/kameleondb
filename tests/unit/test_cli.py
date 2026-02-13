@@ -273,14 +273,20 @@ class TestDataCommands:
         with 'unhashable type: dict'.
         """
         # Create entity
-        runner.invoke(
-            app, ["-d", temp_db, "schema", "create", "BatchItem", "-f", "name:string"]
-        )
+        runner.invoke(app, ["-d", temp_db, "schema", "create", "BatchItem", "-f", "name:string"])
 
         # Insert multiple records using inline JSON array
         result = runner.invoke(
             app,
-            ["-d", temp_db, "--json", "data", "insert", "BatchItem", '[{"name": "A"}, {"name": "B"}, {"name": "C"}]'],
+            [
+                "-d",
+                temp_db,
+                "--json",
+                "data",
+                "insert",
+                "BatchItem",
+                '[{"name": "A"}, {"name": "B"}, {"name": "C"}]',
+            ],
         )
         assert result.exit_code == 0, f"Failed with: {result.stdout}"
         data = json.loads(result.stdout)
