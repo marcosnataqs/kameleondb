@@ -367,8 +367,18 @@ class TestDataCommands:
         # List them
         result = runner.invoke(app, ["-d", temp_db, "--json", "data", "list", "Many"])
         assert result.exit_code == 0
-        data = json.loads(result.stdout)
-        assert len(data) == 3
+        response = json.loads(result.stdout)
+        # Verify structured response format (fixes #43)
+        assert "data" in response
+        assert "count" in response
+        assert "limit" in response
+        assert "offset" in response
+        assert response["count"] == 3
+        assert len(response["data"]) == 3
+        # Verify data field is parsed JSON, not string
+        for record in response["data"]:
+            assert isinstance(record["data"], dict)
+            assert "n" in record["data"]
 
     def test_data_list_with_limit(self, temp_db: str) -> None:
         """Test listing records with limit."""
@@ -382,8 +392,12 @@ class TestDataCommands:
             app, ["-d", temp_db, "--json", "data", "list", "Limited", "--limit", "2"]
         )
         assert result.exit_code == 0
-        data = json.loads(result.stdout)
-        assert len(data) == 2
+        response = json.loads(result.stdout)
+        # Verify structured response with limit/offset
+        assert response["count"] == 2
+        assert response["limit"] == 2
+        assert response["offset"] == 0
+        assert len(response["data"]) == 2
 
     def test_data_info(self, temp_db: str) -> None:
         """Test data stats command."""
