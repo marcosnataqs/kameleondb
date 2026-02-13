@@ -784,26 +784,69 @@ def data_list(
     try:
         db = cli_ctx.get_db()
 
-        # Use SQL query to list records with pagination
-        db.describe_entity(entity_name)
-        entity_id_query = f"SELECT id FROM kdb_entity_definitions WHERE name = '{entity_name}'"
-        entity_id_result = db.execute_sql(entity_id_query, read_only=True)
+        # Get entity info to check storage mode
+        entity_info = db.describe_entity(entity_name)
 
-        if not entity_id_result.rows:
-            raise Exception(f"Entity not found: {entity_name}")
+        # Check if entity is materialized (dedicated storage)
+        if entity_info.storage_mode == "dedicated" and entity_info.dedicated_table_name:
+            # Query from dedicated table
+            table_name = entity_info.dedicated_table_name
 
-        entity_id = entity_id_result.rows[0]["id"]
+            # Get field names to reconstruct data dict
+            field_names = [f.name for f in entity_info.fields]
 
-        # Query records
-        sql = f"""
-            SELECT id, data, created_at, updated_at
-            FROM kdb_records
-            WHERE entity_id = '{entity_id}' AND is_deleted = FALSE
-            ORDER BY created_at DESC
-            LIMIT {limit} OFFSET {offset}
-        """
-        result = db.execute_sql(sql, read_only=True)
-        records = result.rows
+            # Build column list for SELECT
+            # System columns: id, created_at, updated_at, created_by, is_deleted
+            # Plus all field columns
+            field_columns = ", ".join(f'"{f}"' for f in field_names) if field_names else ""
+            select_cols = "id, created_at, updated_at"
+            if field_columns:
+                select_cols += f", {field_columns}"
+
+            sql = f"""
+                SELECT {select_cols}
+                FROM "{table_name}"
+                WHERE is_deleted = FALSE
+                ORDER BY created_at DESC
+                LIMIT {limit} OFFSET {offset}
+            """
+            result = db.execute_sql(sql, read_only=True)
+
+            # Reconstruct records with data dict from individual columns
+            records = []
+            for row in result.rows:
+                data_dict: dict[str, Any] = {}
+                for field_name in field_names:
+                    if field_name in row and row[field_name] is not None:
+                        data_dict[field_name] = row[field_name]
+
+                records.append(
+                    {
+                        "id": row["id"],
+                        "data": data_dict,
+                        "created_at": row["created_at"],
+                        "updated_at": row["updated_at"],
+                    }
+                )
+        else:
+            # Query from shared storage (kdb_records)
+            entity_id_query = f"SELECT id FROM kdb_entity_definitions WHERE name = '{entity_name}'"
+            entity_id_result = db.execute_sql(entity_id_query, read_only=True)
+
+            if not entity_id_result.rows:
+                raise Exception(f"Entity not found: {entity_name}")
+
+            entity_id = entity_id_result.rows[0]["id"]
+
+            sql = f"""
+                SELECT id, data, created_at, updated_at
+                FROM kdb_records
+                WHERE entity_id = '{entity_id}' AND is_deleted = FALSE
+                ORDER BY created_at DESC
+                LIMIT {limit} OFFSET {offset}
+            """
+            result = db.execute_sql(sql, read_only=True)
+            records = result.rows
 
         # Parse JSON data field for each record
         for record in records:

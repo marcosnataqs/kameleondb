@@ -669,6 +669,90 @@ class TestGlobalOptions:
             del os.environ["KAMELEONDB_URL"]
 
 
+class TestMaterializedDataList:
+    """Test data list command with materialized entities (GitHub issue #47)."""
+
+    def test_data_list_returns_records_for_materialized_entity(self, temp_db: str) -> None:
+        """Test that data list returns records after entity is materialized.
+
+        Regression test for GitHub issue #47: `data list` returns empty for
+        materialized entities because it was always querying kdb_records instead
+        of the dedicated table.
+        """
+        # Create entity and insert data
+        runner.invoke(
+            app,
+            ["-d", temp_db, "schema", "create", "TestMat", "-f", "name:string", "-f", "value:int"],
+        )
+        runner.invoke(
+            app, ["-d", temp_db, "data", "insert", "TestMat", '{"name": "Record 1", "value": 100}']
+        )
+        runner.invoke(
+            app, ["-d", temp_db, "data", "insert", "TestMat", '{"name": "Record 2", "value": 200}']
+        )
+
+        # Verify data list works before materialization
+        list_before = runner.invoke(app, ["-d", temp_db, "--json", "data", "list", "TestMat"])
+        assert list_before.exit_code == 0
+        data_before = json.loads(list_before.stdout)
+        assert len(data_before) == 2
+
+        # Materialize the entity
+        mat_result = runner.invoke(
+            app, ["-d", temp_db, "--json", "storage", "materialize", "TestMat"]
+        )
+        assert mat_result.exit_code == 0, f"Materialize failed: {mat_result.stdout}"
+
+        # Verify data list still works after materialization (the bug fix)
+        list_after = runner.invoke(app, ["-d", temp_db, "--json", "data", "list", "TestMat"])
+        assert list_after.exit_code == 0
+        data_after = json.loads(list_after.stdout)
+        assert len(data_after) == 2, f"Expected 2 records, got: {data_after}"
+
+        # Verify record data is correct
+        names = sorted([r["data"]["name"] for r in data_after])
+        assert names == ["Record 1", "Record 2"]
+        values = sorted([r["data"]["value"] for r in data_after])
+        assert values == [100, 200]
+
+    def test_data_list_works_after_dematerialization(self, temp_db: str) -> None:
+        """Test that data list works after dematerialization back to shared storage."""
+        # Create, insert, materialize
+        runner.invoke(app, ["-d", temp_db, "schema", "create", "DeMat", "-f", "title:string"])
+        runner.invoke(app, ["-d", temp_db, "data", "insert", "DeMat", '{"title": "Test"}'])
+        runner.invoke(app, ["-d", temp_db, "storage", "materialize", "DeMat"])
+
+        # Dematerialize
+        runner.invoke(app, ["-d", temp_db, "storage", "dematerialize", "DeMat"])
+
+        # Data list should still work
+        list_result = runner.invoke(app, ["-d", temp_db, "--json", "data", "list", "DeMat"])
+        assert list_result.exit_code == 0
+        data = json.loads(list_result.stdout)
+        assert len(data) == 1
+
+    def test_data_info_and_list_consistency(self, temp_db: str) -> None:
+        """Test that data info count matches data list length for materialized entities."""
+        # Create entity with multiple records
+        runner.invoke(app, ["-d", temp_db, "schema", "create", "Consistent", "-f", "x:int"])
+        for i in range(5):
+            runner.invoke(app, ["-d", temp_db, "data", "insert", "Consistent", f'{{"x": {i}}}'])
+
+        # Materialize
+        runner.invoke(app, ["-d", temp_db, "storage", "materialize", "Consistent"])
+
+        # Get info (should show correct count)
+        info_result = runner.invoke(app, ["-d", temp_db, "--json", "data", "info", "Consistent"])
+        info_data = json.loads(info_result.stdout)
+
+        # Get list (should return same number of records)
+        list_result = runner.invoke(app, ["-d", temp_db, "--json", "data", "list", "Consistent"])
+        list_data = json.loads(list_result.stdout)
+
+        assert info_data["active_records"] == len(list_data)
+        assert info_data["active_records"] == 5
+
+
 class TestErrorHandling:
     """Test error handling in CLI commands."""
 
