@@ -806,17 +806,17 @@ def data_list(
                     if field_name in row and row[field_name] is not None:
                         data_dict[field_name] = row[field_name]
 
-                records.append({
-                    "id": row["id"],
-                    "data": data_dict,
-                    "created_at": row["created_at"],
-                    "updated_at": row["updated_at"],
-                })
+                records.append(
+                    {
+                        "id": row["id"],
+                        "data": data_dict,
+                        "created_at": row["created_at"],
+                        "updated_at": row["updated_at"],
+                    }
+                )
         else:
             # Query from shared storage (kdb_records)
-            entity_id_query = (
-                f"SELECT id FROM kdb_entity_definitions WHERE name = '{entity_name}'"
-            )
+            entity_id_query = f"SELECT id FROM kdb_entity_definitions WHERE name = '{entity_name}'"
             entity_id_result = db.execute_sql(entity_id_query, read_only=True)
 
             if not entity_id_result.rows:

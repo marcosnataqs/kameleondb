@@ -12,6 +12,7 @@ Usage:
 """
 
 import argparse
+import contextlib
 import json
 import os
 import random
@@ -179,10 +180,8 @@ class StressTest:
 
         # Drop existing entities if any
         for entity in ["Order", "Product", "Customer"]:
-            try:
+            with contextlib.suppress(Exception):
                 self.db.drop_entity(entity)
-            except Exception:
-                pass
 
         self.log("Creating schemas...")
 
@@ -477,9 +476,9 @@ class StressTest:
         # Check counts using SQL with entity names from definitions
         result = self.db.execute_sql(
             """
-            SELECT e.name, COUNT(*) as cnt 
-            FROM kdb_records r 
-            JOIN kdb_entity_definitions e ON r.entity_id = e.id 
+            SELECT e.name, COUNT(*) as cnt
+            FROM kdb_records r
+            JOIN kdb_entity_definitions e ON r.entity_id = e.id
             WHERE r.is_deleted = 0
             GROUP BY e.name
             """
