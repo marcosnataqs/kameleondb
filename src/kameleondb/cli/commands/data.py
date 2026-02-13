@@ -830,9 +830,7 @@ def data_list(
                 )
         else:
             # Query from shared storage (kdb_records)
-            entity_id_query = (
-                f"SELECT id FROM kdb_entity_definitions WHERE name = '{entity_name}'"
-            )
+            entity_id_query = f"SELECT id FROM kdb_entity_definitions WHERE name = '{entity_name}'"
             entity_id_result = db.execute_sql(entity_id_query, read_only=True)
 
             if not entity_id_result.rows:
