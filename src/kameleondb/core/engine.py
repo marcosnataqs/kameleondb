@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from types import EllipsisType
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from kameleondb.search import SearchEngine
 
 from kameleondb.core.connection import DatabaseConnection
 from kameleondb.core.types import EntityInfo
@@ -76,7 +79,12 @@ class Entity:
         Returns:
             The new record ID
         """
-        return self._get_query().insert(data, created_by=created_by)
+        record_id = self._get_query().insert(data, created_by=created_by)
+
+        # Index for search if embeddings enabled
+        self._db._index_record_for_search(self._name, record_id, data)
+
+        return record_id
 
     def insert_many(
         self,
@@ -119,7 +127,12 @@ class Entity:
         Returns:
             Updated record dict
         """
-        return self._get_query().update(record_id, data)
+        result = self._get_query().update(record_id, data)
+
+        # Reindex for search if embeddings enabled
+        self._db._index_record_for_search(self._name, record_id, result)
+
+        return result
 
     def delete(
         self,
@@ -1140,6 +1153,10 @@ class KameleonDB:
         url: str,
         echo: bool = False,
         materialization_policy: Any = None,
+        embeddings: bool = False,
+        embedding_provider: str | Any = "fastembed",
+        embedding_model: str | None = None,
+        embedding_dimensions: int | None = None,
     ) -> None:
         """Initialize KameleonDB.
 
@@ -1147,6 +1164,10 @@ class KameleonDB:
             url: Database connection URL
             echo: Whether to echo SQL statements (for debugging)
             materialization_policy: Optional policy for query intelligence
+            embeddings: Enable semantic search with embeddings
+            embedding_provider: Provider name ("fastembed", "openai") or instance
+            embedding_model: Model name (provider-specific)
+            embedding_dimensions: Vector dimensions (default: 384)
         """
         from kameleondb.core.types import MaterializationPolicy
         from kameleondb.query.metrics import MetricsCollector
@@ -1165,11 +1186,45 @@ class KameleonDB:
         )
         self._suggestion_engine = SuggestionEngine(self._materialization_policy)
 
+        # Semantic Search (Layer 2)
+        self._embeddings_enabled = embeddings
+        self._search_engine: SearchEngine | None = None
+        if embeddings:
+            self._init_search_engine(embedding_provider, embedding_model, embedding_dimensions)
+
         # Initialize meta-tables (schema definitions)
         self._schema_engine.initialize()
 
         # Initialize JSONB data tables (kdb_records with JSONB column)
         self._table_manager.ensure_jsonb_tables()
+
+    def _init_search_engine(
+        self,
+        provider: str | Any,
+        model: str | None,
+        dimensions: int | None,
+    ) -> None:
+        """Initialize the search engine with embedding provider."""
+        from kameleondb.embeddings import EmbeddingProvider, get_provider
+        from kameleondb.search import SearchEngine
+
+        # Build provider kwargs
+        kwargs: dict[str, Any] = {}
+        if model:
+            kwargs["model"] = model
+        if dimensions:
+            kwargs["dimensions"] = dimensions
+
+        # Get or create provider
+        if isinstance(provider, EmbeddingProvider):
+            embedding_provider = provider
+        else:
+            embedding_provider = get_provider(provider, **kwargs)
+
+        self._search_engine = SearchEngine(
+            self._connection.engine,
+            embedding_provider,
+        )
 
     def close(self) -> None:
         """Close the database connection."""
@@ -1714,3 +1769,191 @@ class KameleonDB:
             storage_mode=storage_mode,
             record_count=record_count,
         )
+
+    # === Semantic Search (Layer 2) ===
+
+    def search(
+        self,
+        query: str,
+        entity: str | None = None,
+        entities: list[str] | None = None,
+        limit: int = 10,
+        min_score: float = 0.0,
+    ) -> list[dict[str, Any]]:
+        """Search records using hybrid BM25 + vector search.
+
+        Combines keyword (BM25) and semantic (vector) search using
+        Reciprocal Rank Fusion for best results.
+
+        Args:
+            query: Search query text
+            entity: Single entity to search (optional)
+            entities: List of entities to search (optional)
+            limit: Maximum results to return (default 10)
+            min_score: Minimum score threshold (default 0.0)
+
+        Returns:
+            List of search results with:
+            - entity: Entity name
+            - id: Record ID
+            - score: Relevance score
+            - data: Full record data
+            - matched_text: Text that matched
+
+        Raises:
+            RuntimeError: If embeddings not enabled
+
+        Example:
+            >>> db = KameleonDB("sqlite:///app.db", embeddings=True)
+            >>> results = db.search("shipping complaint")
+            >>> for r in results:
+            ...     print(f"{r['entity']}/{r['id']}: {r['score']:.2f}")
+        """
+        if not self._search_engine:
+            raise RuntimeError(
+                "Search requires embeddings. Initialize with: KameleonDB(..., embeddings=True)"
+            )
+
+        results = self._search_engine.search(
+            query=query,
+            entity=entity,
+            entities=entities,
+            limit=limit,
+            min_score=min_score,
+        )
+
+        # Convert to dicts for JSON serialization
+        return [
+            {
+                "entity": r.entity,
+                "id": r.id,
+                "score": r.score,
+                "data": r.data,
+                "matched_text": r.matched_text,
+            }
+            for r in results
+        ]
+
+    def reindex_embeddings(self, entity_name: str | None = None) -> dict[str, Any]:
+        """Reindex embeddings for an entity or all entities.
+
+        Use after changing embed_fields or to refresh embeddings.
+
+        Args:
+            entity_name: Entity to reindex, or None for all entities
+
+        Returns:
+            Dict with reindex status
+
+        Raises:
+            RuntimeError: If embeddings not enabled
+        """
+        if not self._search_engine:
+            raise RuntimeError(
+                "Reindex requires embeddings. Initialize with: KameleonDB(..., embeddings=True)"
+            )
+
+        # Get entities to reindex
+        entities = [entity_name] if entity_name else self.list_entities()
+
+        total_indexed = 0
+        for name in entities:
+            entity_def = self._schema_engine.get_entity(name)
+            if not entity_def:
+                continue
+
+            # Get embed_fields from entity metadata
+            embed_fields = self._get_embed_fields(name)
+            if not embed_fields:
+                continue
+
+            # Get all records
+            entity = self.entity(name)
+            # Use query to get all records (simplified - could use pagination)
+            query = entity._get_query()
+
+            # TODO: Add proper pagination for large datasets
+            records = query.find_all(limit=10000)
+
+            for record in records:
+                content = self._build_embed_content(record, embed_fields)
+                if content:
+                    self._search_engine.index_record(name, record["id"], content)
+                    total_indexed += 1
+
+        return {
+            "status": "complete",
+            "entities_processed": len(entities),
+            "records_indexed": total_indexed,
+        }
+
+    def embedding_status(self, entity_name: str | None = None) -> list[dict[str, Any]]:
+        """Get embedding index status.
+
+        Args:
+            entity_name: Optional entity to filter
+
+        Returns:
+            List of status dicts per entity
+        """
+        if not self._search_engine:
+            return []
+
+        statuses = self._search_engine.get_status(entity_name)
+        return [
+            {
+                "entity": s.entity,
+                "indexed": s.indexed,
+                "pending": s.pending,
+                "last_updated": s.last_updated.isoformat() if s.last_updated else None,
+            }
+            for s in statuses
+        ]
+
+    def _get_embed_fields(self, entity_name: str) -> list[str] | None:
+        """Get embed_fields for an entity from metadata.
+
+        TODO: Store embed_fields in entity definition metadata.
+        For now, returns text/string fields as default.
+        """
+        fields = self._schema_engine.get_fields(entity_name)
+        # Default: embed all text and string fields
+        return [f.name for f in fields if f.field_type in ("text", "string")]
+
+    def _build_embed_content(
+        self,
+        record: dict[str, Any],
+        embed_fields: list[str],
+    ) -> str:
+        """Build embeddable content from record fields.
+
+        Format: "field1: value1 | field2: value2"
+        """
+        parts = []
+        for field in embed_fields:
+            value = record.get(field)
+            if value:
+                parts.append(f"{field}: {value}")
+        return " | ".join(parts)
+
+    def _index_record_for_search(
+        self,
+        entity_name: str,
+        record_id: str,
+        data: dict[str, Any],
+    ) -> None:
+        """Index a record for search after insert/update.
+
+        Called automatically when embeddings are enabled.
+        """
+        if not self._search_engine:
+            return
+
+        embed_fields = self._get_embed_fields(entity_name)
+        if not embed_fields:
+            return
+
+        # Build content
+        content = self._build_embed_content({"id": record_id, **data}, embed_fields)
+        if content:
+            self._search_engine.index_record(entity_name, record_id, content)

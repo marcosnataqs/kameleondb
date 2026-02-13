@@ -296,6 +296,29 @@ class JSONBQuery:
         except Exception as e:
             raise QueryError(f"Failed to find record: {e}") from e
 
+    def find_all(self, limit: int = 10000) -> list[dict[str, Any]]:
+        """Find all records for this entity.
+
+        Args:
+            limit: Maximum number of records to return (default: 10000)
+
+        Returns:
+            List of record dicts
+        """
+        try:
+            with Session(self._engine) as session:
+                records = (
+                    session.query(Record)
+                    .filter(Record.entity_id == self._entity_id)
+                    .filter(Record.is_deleted == False)  # noqa: E712
+                    .limit(limit)
+                    .all()
+                )
+
+                return [self._record_to_dict(r) for r in records]
+        except Exception as e:
+            raise QueryError(f"Failed to find records: {e}") from e
+
     def update(
         self,
         record_id: str,
