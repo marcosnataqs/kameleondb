@@ -299,7 +299,7 @@ class TestDataCommands:
         list_result = runner.invoke(app, ["-d", temp_db, "--json", "data", "list", "BatchItem"])
         assert list_result.exit_code == 0
         records = json.loads(list_result.stdout)
-        assert len(records) == 3
+        assert len(records["data"]) == 3
 
     def test_data_get(self, temp_db: str) -> None:
         """Test getting a record by ID."""
@@ -695,7 +695,7 @@ class TestMaterializedDataList:
         list_before = runner.invoke(app, ["-d", temp_db, "--json", "data", "list", "TestMat"])
         assert list_before.exit_code == 0
         data_before = json.loads(list_before.stdout)
-        assert len(data_before) == 2
+        assert len(data_before["data"]) == 2
 
         # Materialize the entity
         mat_result = runner.invoke(
@@ -707,12 +707,12 @@ class TestMaterializedDataList:
         list_after = runner.invoke(app, ["-d", temp_db, "--json", "data", "list", "TestMat"])
         assert list_after.exit_code == 0
         data_after = json.loads(list_after.stdout)
-        assert len(data_after) == 2, f"Expected 2 records, got: {data_after}"
+        assert len(data_after["data"]) == 2, f"Expected 2 records, got: {data_after}"
 
         # Verify record data is correct
-        names = sorted([r["data"]["name"] for r in data_after])
+        names = sorted([r["data"]["name"] for r in data_after["data"]])
         assert names == ["Record 1", "Record 2"]
-        values = sorted([r["data"]["value"] for r in data_after])
+        values = sorted([r["data"]["value"] for r in data_after["data"]])
         assert values == [100, 200]
 
     def test_data_list_works_after_dematerialization(self, temp_db: str) -> None:
@@ -729,7 +729,7 @@ class TestMaterializedDataList:
         list_result = runner.invoke(app, ["-d", temp_db, "--json", "data", "list", "DeMat"])
         assert list_result.exit_code == 0
         data = json.loads(list_result.stdout)
-        assert len(data) == 1
+        assert len(data["data"]) == 1
 
     def test_data_info_and_list_consistency(self, temp_db: str) -> None:
         """Test that data info count matches data list length for materialized entities."""
@@ -749,7 +749,7 @@ class TestMaterializedDataList:
         list_result = runner.invoke(app, ["-d", temp_db, "--json", "data", "list", "Consistent"])
         list_data = json.loads(list_result.stdout)
 
-        assert info_data["active_records"] == len(list_data)
+        assert info_data["active_records"] == len(list_data["data"])
         assert info_data["active_records"] == 5
 
 
