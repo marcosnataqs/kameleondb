@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from types import EllipsisType
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from kameleondb.search import SearchEngine
 
 from kameleondb.core.connection import DatabaseConnection
 from kameleondb.core.types import EntityInfo
@@ -1185,7 +1188,7 @@ class KameleonDB:
 
         # Semantic Search (Layer 2)
         self._embeddings_enabled = embeddings
-        self._search_engine = None
+        self._search_engine: SearchEngine | None = None
         if embeddings:
             self._init_search_engine(embedding_provider, embedding_model, embedding_dimensions)
 

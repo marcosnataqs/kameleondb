@@ -403,7 +403,7 @@ class SearchEngine:
         bm25_results = self._bm25_search(query, entity, entities, limit * 2)
 
         # Get vector results (if provider available)
-        vector_results: list[tuple[str, str, str]] = []
+        vector_results: list[tuple[str, str, str, float]] = []
         if self._provider:
             vector_results = self._vector_search(query, entity, entities, limit * 2)
 
@@ -610,7 +610,8 @@ class SearchEngine:
         norm_b = sum(x * x for x in b) ** 0.5
         if norm_a == 0 or norm_b == 0:
             return 0.0
-        return dot_product / (norm_a * norm_b)
+        similarity: float = dot_product / (norm_a * norm_b)
+        return similarity
 
     def _reciprocal_rank_fusion(
         self,

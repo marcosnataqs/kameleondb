@@ -143,6 +143,13 @@ disallow_untyped_defs = false
 module = "kameleondb.integrations.mcp.*"
 disallow_untyped_decorators = false
 
+[[tool.mypy.overrides]]
+module = [
+    "openai.*",
+    "fastembed.*",
+]
+ignore_missing_imports = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short"

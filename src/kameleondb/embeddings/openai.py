@@ -73,7 +73,8 @@ class OpenAIProvider(EmbeddingProvider):
             input=text,
             dimensions=self._dimensions,
         )
-        return response.data[0].embedding
+        embedding: list[float] = response.data[0].embedding
+        return embedding
 
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Embed multiple texts efficiently.

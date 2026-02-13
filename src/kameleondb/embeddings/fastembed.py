@@ -62,7 +62,8 @@ class FastEmbedProvider(EmbeddingProvider):
         """
         # fastembed returns a generator, take first result
         embeddings = list(self._model.embed([text]))
-        return embeddings[0].tolist()
+        result: list[float] = embeddings[0].tolist()
+        return result
 
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Embed multiple texts efficiently.
