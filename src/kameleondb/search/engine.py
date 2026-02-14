@@ -384,8 +384,9 @@ class SearchEngine:
         entities: list[str] | None = None,
         limit: int = 10,
         min_score: float = 0.0,
+        where: dict[str, Any] | None = None,
     ) -> list[SearchResult]:
-        """Perform hybrid search.
+        """Perform hybrid search with optional structured filters.
 
         Combines BM25 (keyword) and vector (semantic) search using RRF.
 
@@ -395,20 +396,72 @@ class SearchEngine:
             entities: List of entities to search (optional)
             limit: Maximum results to return
             min_score: Minimum score threshold
+            where: Structured filters to apply (e.g., {"status": "open", "priority": "high"})
 
         Returns:
             List of SearchResult objects sorted by relevance
         """
+        # Fetch more results if filtering, to ensure we have enough after filter
+        fetch_limit = limit * 4 if where else limit * 2
+
         # Get BM25 results
-        bm25_results = self._bm25_search(query, entity, entities, limit * 2)
+        bm25_results = self._bm25_search(query, entity, entities, fetch_limit)
 
         # Get vector results (if provider available)
         vector_results: list[tuple[str, str, str, float]] = []
         if self._provider:
-            vector_results = self._vector_search(query, entity, entities, limit * 2)
+            vector_results = self._vector_search(query, entity, entities, fetch_limit)
 
         # Combine with RRF
-        return self._reciprocal_rank_fusion(bm25_results, vector_results, limit, min_score)
+        results = self._reciprocal_rank_fusion(bm25_results, vector_results, fetch_limit, min_score)
+
+        # Apply structured filters if provided
+        if where:
+            results = self._apply_where_filters(results, where)
+
+        # Apply final limit
+        return results[:limit]
+
+    def _apply_where_filters(
+        self,
+        results: list[SearchResult],
+        where: dict[str, Any],
+    ) -> list[SearchResult]:
+        """Apply structured filters to search results.
+
+        Filters results where data fields match the where conditions.
+        Supports exact match only (no operators yet).
+
+        Args:
+            results: Search results to filter
+            where: Dict of field -> value conditions (AND logic)
+
+        Returns:
+            Filtered results
+        """
+        filtered = []
+        for result in results:
+            data = result.data
+            # Parse data if it's a JSON string
+            if isinstance(data, str):
+                import json
+
+                try:
+                    data = json.loads(data)
+                except json.JSONDecodeError:
+                    continue
+
+            # Check all conditions (AND logic)
+            match = True
+            for field, expected in where.items():
+                if field not in data or data[field] != expected:
+                    match = False
+                    break
+
+            if match:
+                filtered.append(result)
+
+        return filtered
 
     def _bm25_search(
         self,

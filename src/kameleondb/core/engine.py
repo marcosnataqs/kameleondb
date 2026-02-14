@@ -1781,6 +1781,7 @@ class KameleonDB:
         entities: list[str] | None = None,
         limit: int = 10,
         min_score: float = 0.0,
+        where: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Search records using hybrid BM25 + vector search.
 
@@ -1793,6 +1794,7 @@ class KameleonDB:
             entities: List of entities to search (optional)
             limit: Maximum results to return (default 10)
             min_score: Minimum score threshold (default 0.0)
+            where: Structured filters (e.g., {"status": "open", "priority": "high"})
 
         Returns:
             List of search results with:
@@ -1810,6 +1812,9 @@ class KameleonDB:
             >>> results = db.search("shipping complaint")
             >>> for r in results:
             ...     print(f"{r['entity']}/{r['id']}: {r['score']:.2f}")
+
+            # With structured filters
+            >>> results = db.search("complaint", entity="Ticket", where={"status": "open"})
         """
         if not self._search_engine:
             raise RuntimeError(
@@ -1822,6 +1827,7 @@ class KameleonDB:
             entities=entities,
             limit=limit,
             min_score=min_score,
+            where=where,
         )
 
         # Convert to dicts for JSON serialization

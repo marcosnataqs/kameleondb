@@ -68,13 +68,17 @@ def version() -> None:
 
 
 # Register command groups
-from kameleondb.cli.commands import admin, data, query, schema, storage
+from kameleondb.cli.commands import admin, data, query, schema, search, storage
 
 app.add_typer(schema.app, name="schema")
 app.add_typer(data.app, name="data")
 app.add_typer(query.app, name="query")
 app.add_typer(storage.app, name="storage")
 app.add_typer(admin.app, name="admin")
+app.add_typer(search.embeddings_app, name="embeddings")
+
+# Register search as a standalone command (not a group)
+app.command(name="search")(search.search_command)
 
 
 def main() -> None:

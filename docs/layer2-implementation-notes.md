@@ -138,12 +138,17 @@ class SearchResult:
     matched_text: str  # The embedded content
 ```
 
-## Phase 2: Search Features
+## Phase 2: CLI Commands ✅ COMPLETE (Feb 14, 2026)
 
-- [ ] Hybrid search with RRF (Reciprocal Rank Fusion)
-- [ ] OpenAI provider
-- [ ] CLI commands (`kameleondb search`, `kameleondb embeddings status`)
-- [ ] Auto-reindex on record update
+**Goal:** Expose search + embeddings management through CLI
+
+- [x] Hybrid search with RRF (Reciprocal Rank Fusion) — ✅ PR #39
+- [x] OpenAI provider — ✅ PR #39
+- [x] CLI commands (`kameleondb search`, `kameleondb embeddings status`) — ✅ Feb 14
+  - `kameleondb search "query" [--entity] [--limit] [--threshold]`
+  - `kameleondb embeddings status` — show provider, model, indexed entities
+  - `kameleondb embeddings reindex [Entity] [--force]`
+- [x] Auto-reindex on record update — ✅ Already implemented (Entity.update() line 133)
 
 ## Phase 3: Optimizations
 
