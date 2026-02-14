@@ -20,13 +20,18 @@ console = Console()
 def search_command(
     ctx: typer.Context,
     query: Annotated[str, typer.Argument(help="Search query text")],
-    entity: Annotated[str | None, typer.Option("--entity", "-e", help="Entity name to search")] = None,
+    entity: Annotated[
+        str | None, typer.Option("--entity", "-e", help="Entity name to search")
+    ] = None,
     limit: Annotated[int, typer.Option("--limit", "-n", help="Maximum results to return")] = 10,
     min_score: Annotated[
         float | None, typer.Option("--threshold", "-t", help="Minimum relevance score")
     ] = None,
     where: Annotated[
-        str | None, typer.Option("--where", "-w", help="Structured filters as JSON (e.g., '{\"status\": \"open\"}')")
+        str | None,
+        typer.Option(
+            "--where", "-w", help='Structured filters as JSON (e.g., \'{"status": "open"}\')'
+        ),
     ] = None,
 ) -> None:
     """Search records using semantic search with optional filters.
@@ -209,9 +214,7 @@ def embeddings_status(
 @embeddings_app.command("reindex")
 def embeddings_reindex(
     ctx: typer.Context,
-    entity: Annotated[
-        str | None, typer.Argument(help="Entity to reindex (omit for all)")
-    ] = None,
+    entity: Annotated[str | None, typer.Argument(help="Entity to reindex (omit for all)")] = None,
     force: Annotated[bool, typer.Option("--force", help="Force reindex all records")] = False,
 ) -> None:
     """Reindex embeddings for an entity or all entities.
