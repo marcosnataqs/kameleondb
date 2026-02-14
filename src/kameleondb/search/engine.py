@@ -445,6 +445,7 @@ class SearchEngine:
             # Parse data if it's a JSON string
             if isinstance(data, str):
                 import json
+
                 try:
                     data = json.loads(data)
                 except json.JSONDecodeError:
