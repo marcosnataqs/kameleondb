@@ -61,6 +61,8 @@ class Entity:
                 entity_id=entity_def.id,
                 entity_name=self._name,
                 fields=fields,
+                storage_mode=entity_def.storage_mode,
+                dedicated_table_name=entity_def.dedicated_table_name,
             )
 
         return self._query
