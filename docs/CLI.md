@@ -31,6 +31,8 @@ kameleondb [OPTIONS] COMMAND [ARGS]...
 | `schema` | Manage entity schemas |
 | `data` | CRUD operations on entity records |
 | `query` | Execute SQL queries |
+| `search` | Semantic search with hybrid BM25 + vector ranking |
+| `embeddings` | Manage embedding configuration and indexing |
 | `storage` | Manage storage modes and materialization |
 | `admin` | Database administration |
 
@@ -344,6 +346,130 @@ kameleondb --json query run "SELECT COUNT(*) as total FROM usr_Contact"
 
 ---
 
+## Search Commands
+
+Semantic search with hybrid BM25 (keyword) + vector (semantic) ranking using Reciprocal Rank Fusion (RRF).
+
+### `search`
+
+Search records across entities using natural language queries.
+
+```bash
+kameleondb search <query> [OPTIONS]
+
+Options:
+  --entity, -e TEXT      Entity name to search (omit for all entities)
+  --limit, -n INTEGER    Maximum results to return (default: 10)
+  --threshold, -t FLOAT  Minimum relevance score (0.0-1.0)
+  --where, -w TEXT       Structured filters as JSON (e.g., '{"status": "open"}')
+```
+
+**Examples:**
+
+```bash
+# Search all entities
+kameleondb search "customer complaint about shipping"
+
+# Search specific entity
+kameleondb search "email address" --entity Contact --limit 5
+
+# With relevance threshold
+kameleondb search "Python tutorial" --threshold 0.7 --json
+
+# Combine semantic search with structured filters
+kameleondb search "bug report" --entity Ticket --where '{"status": "open", "priority": "high"}'
+```
+
+**How Hybrid Search Works:**
+
+1. **BM25 (keyword)**: Full-text search ranking by term frequency
+2. **Vector (semantic)**: Embedding similarity for meaning-based matching
+3. **RRF fusion**: Combines both rankings for best-of-both-worlds results
+
+**Setting Up Search:**
+
+To use search, create entities with `embed_fields` to specify which fields get embedded:
+
+```python
+# Python API
+db.create_entity(
+    "Article",
+    fields=[
+        {"name": "title", "type": "string"},
+        {"name": "body", "type": "text"},
+    ],
+    embed_fields=["title", "body"],
+)
+```
+
+---
+
+## Embeddings Commands
+
+Manage embedding configuration and indexing for semantic search.
+
+### `embeddings status`
+
+Show embedding configuration and indexing status.
+
+```bash
+kameleondb embeddings status
+```
+
+**Example output:**
+
+```
+Embedding Status
+Provider: fastembed
+Model: BAAI/bge-small-en-v1.5
+Dimensions: 384
+
+Entity          | Indexed | Pending | Total
+----------------|---------|---------|------
+Article         | 1,234   | 12      | 1,246
+Contact         | 567     | 0       | 567
+```
+
+### `embeddings reindex`
+
+Reindex embeddings for an entity or all entities.
+
+```bash
+kameleondb embeddings reindex [ENTITY] [OPTIONS]
+
+Arguments:
+  ENTITY  Entity to reindex (omit for all)
+
+Options:
+  --force  Force reindex all records (even already indexed)
+```
+
+**Examples:**
+
+```bash
+# Reindex all entities (only unindexed records)
+kameleondb embeddings reindex
+
+# Reindex specific entity
+kameleondb embeddings reindex Contact
+
+# Force full reindex
+kameleondb embeddings reindex Article --force
+```
+
+**Auto-Reindexing:**
+
+KameleonDB automatically reindexes records when:
+- New records are inserted
+- Existing records are updated (fields in `embed_fields`)
+
+Manual reindexing is useful for:
+- Initial bulk imports
+- After changing embedding provider/model
+- Recovery after interrupted indexing
+
+---
+
 ## Storage Commands
 
 Manage storage modes for performance optimization.
@@ -448,8 +574,9 @@ KameleonDB CLI is designed for agent integration. Best practices:
 
 1. **Always use `--json`** for programmatic access
 2. **Use `schema context`** to get LLM-ready schema descriptions
-3. **Set `KAMELEONDB_URL`** environment variable to avoid passing `-d` every time
-4. **Use UUID prefixes** - record IDs support prefix matching (e.g., `abc` matches `abc123-...`)
+3. **Use `search`** for natural language queries instead of writing SQL
+4. **Set `KAMELEONDB_URL`** environment variable to avoid passing `-d` every time
+5. **Use UUID prefixes** - record IDs support prefix matching (e.g., `abc` matches `abc123-...`)
 
 **Example agent workflow:**
 
@@ -461,8 +588,26 @@ kameleondb --json schema context
 # Insert a memory
 kameleondb --json data insert Memory '{"content": "User prefers dark mode", "category": "preference"}'
 
-# Query memories
+# Query memories with SQL
 kameleondb --json query run "SELECT * FROM usr_Memory WHERE data->>'category' = 'preference'"
+
+# Or use semantic search (recommended for natural language queries)
+kameleondb --json search "user preferences about themes"
+```
+
+**Semantic Search for Agents:**
+
+For knowledge retrieval tasks, prefer `search` over `query run`:
+
+```bash
+# Find relevant context for a question
+kameleondb --json search "what does the user prefer for notifications" --limit 5
+
+# Filter by entity type
+kameleondb --json search "customer complaint" --entity Ticket --where '{"status": "open"}'
+
+# Check embedding status
+kameleondb --json embeddings status
 ```
 
 ---
