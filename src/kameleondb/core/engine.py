@@ -610,11 +610,12 @@ class Entity:
             ValueError: If relationship is not many-to-many
             RecordNotFoundError: If source or target record doesn't exist
         """
-        from datetime import UTC, datetime
+        from datetime import datetime
         from uuid import uuid4
 
         from sqlalchemy import text
 
+        from kameleondb.core.compat import UTC
         from kameleondb.exceptions import RecordNotFoundError
 
         # Verify source record exists
@@ -778,12 +779,13 @@ class Entity:
         if not target_ids:
             return 0
 
-        from datetime import UTC, datetime
+        from datetime import datetime
         from uuid import uuid4
 
         from sqlalchemy import text
         from sqlalchemy.exc import IntegrityError
 
+        from kameleondb.core.compat import UTC
         from kameleondb.exceptions import RecordNotFoundError
 
         # Verify source record exists

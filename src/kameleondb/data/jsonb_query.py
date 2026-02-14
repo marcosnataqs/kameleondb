@@ -9,7 +9,7 @@ and executed via execute_query() rather than programmatic filtering.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -17,6 +17,7 @@ from sqlalchemy import cast, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 
+from kameleondb.core.compat import UTC
 from kameleondb.exceptions import FieldNotFoundError, QueryError, RecordNotFoundError
 from kameleondb.schema.models import FieldDefinition, Record
 
