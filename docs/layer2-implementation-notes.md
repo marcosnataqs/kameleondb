@@ -138,7 +138,7 @@ class SearchResult:
     matched_text: str  # The embedded content
 ```
 
-## Phase 2: CLI Commands ✅ (Feb 14, 2026)
+## Phase 2: CLI Commands ✅ COMPLETE (Feb 14, 2026)
 
 **Goal:** Expose search + embeddings management through CLI
 
@@ -148,7 +148,7 @@ class SearchResult:
   - `kameleondb search "query" [--entity] [--limit] [--threshold]`
   - `kameleondb embeddings status` — show provider, model, indexed entities
   - `kameleondb embeddings reindex [Entity] [--force]`
-- [ ] Auto-reindex on record update — TODO
+- [x] Auto-reindex on record update — ✅ Already implemented (Entity.update() line 133)
 
 ## Phase 3: Optimizations
 
