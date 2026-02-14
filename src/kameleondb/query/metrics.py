@@ -5,12 +5,13 @@ Provides metrics tracking for query intelligence and materialization suggestions
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from kameleondb.core.compat import UTC
 from kameleondb.core.types import EntityStats, MaterializationPolicy, QueryMetrics
 from kameleondb.schema.models import QueryMetric
 
