@@ -52,6 +52,8 @@ class JSONBQuery:
         entity_id: str,
         entity_name: str,
         fields: list[FieldDefinition],
+        storage_mode: str = "shared",
+        dedicated_table_name: str | None = None,
     ) -> None:
         """Initialize JSON query builder.
 
@@ -60,6 +62,8 @@ class JSONBQuery:
             entity_id: Entity definition ID
             entity_name: Entity name (for error messages)
             fields: List of active field definitions
+            storage_mode: Storage mode ("shared" or "dedicated")
+            dedicated_table_name: Table name if using dedicated storage
         """
         self._engine = engine
         self._entity_id = entity_id
@@ -74,6 +78,9 @@ class JSONBQuery:
         self._all_columns = self._field_names | self._system_columns
         # Detect dialect
         self._is_postgresql = engine.dialect.name == "postgresql"
+        # Storage mode
+        self._storage_mode = storage_mode
+        self._dedicated_table_name = dedicated_table_name
 
     def _get_field(self, name: str) -> FieldDefinition:
         """Get field definition by name."""
@@ -280,19 +287,61 @@ class JSONBQuery:
             Record dict or None if not found
         """
         try:
-            with Session(self._engine) as session:
-                record = (
-                    session.query(Record)
-                    .filter(Record.id == record_id)
-                    .filter(Record.entity_id == self._entity_id)
-                    .filter(Record.is_deleted == False)  # noqa: E712
-                    .first()
-                )
+            if self._storage_mode == "dedicated" and self._dedicated_table_name:
+                # Query from dedicated table using raw SQL
+                from sqlalchemy import text
 
-                if not record:
-                    return None
+                field_columns = [f.column_name for f in self._fields.values()]
+                select_cols = ["id", "created_at", "updated_at", "created_by"] + field_columns
+                cols_str = ", ".join(f'"{c}"' for c in select_cols)
 
-                return self._record_to_dict(record)
+                with Session(self._engine) as session:
+                    result = session.execute(
+                        text(
+                            f"""
+                            SELECT {cols_str}
+                            FROM "{self._dedicated_table_name}"
+                            WHERE id = :record_id AND is_deleted = FALSE
+                        """
+                        ),
+                        {"record_id": record_id},
+                    )
+                    row = result.fetchone()
+                    if not row:
+                        return None
+
+                    # Convert row to dict
+                    row_dict = dict(zip(select_cols, row, strict=False))
+
+                    # Build record dict with data field from individual columns
+                    data = {}
+                    for field_name, field_def in self._fields.items():
+                        col_name = field_def.column_name
+                        if col_name in row_dict and row_dict[col_name] is not None:
+                            data[field_name] = row_dict[col_name]
+
+                    return {
+                        "id": row_dict["id"],
+                        "created_at": row_dict["created_at"],
+                        "updated_at": row_dict["updated_at"],
+                        "created_by": row_dict.get("created_by"),
+                        **data,
+                    }
+            else:
+                # Query from shared storage (kdb_records)
+                with Session(self._engine) as session:
+                    record = (
+                        session.query(Record)
+                        .filter(Record.id == record_id)
+                        .filter(Record.entity_id == self._entity_id)
+                        .filter(Record.is_deleted == False)  # noqa: E712
+                        .first()
+                    )
+
+                    if not record:
+                        return None
+
+                    return self._record_to_dict(record)
         except Exception as e:
             raise QueryError(f"Failed to find record: {e}") from e
 
