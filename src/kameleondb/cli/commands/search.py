@@ -1,14 +1,14 @@
 """CLI commands for semantic search and embeddings."""
 
+import contextlib
 import json
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from kameleondb.cli.context import CLIContext
-from kameleondb.cli.output import OutputFormatter
 
 # Embeddings subcommand group
 embeddings_app = typer.Typer(help="Embeddings management")
@@ -20,18 +20,27 @@ console = Console()
 def search_command(
     ctx: typer.Context,
     query: Annotated[str, typer.Argument(help="Search query text")],
-    entity: Annotated[Optional[str], typer.Option("--entity", "-e", help="Entity name to search")] = None,
+    entity: Annotated[
+        str | None, typer.Option("--entity", "-e", help="Entity name to search")
+    ] = None,
     limit: Annotated[int, typer.Option("--limit", "-n", help="Maximum results to return")] = 10,
     min_score: Annotated[
-        Optional[float], typer.Option("--threshold", "-t", help="Minimum relevance score")
+        float | None, typer.Option("--threshold", "-t", help="Minimum relevance score")
+    ] = None,
+    where: Annotated[
+        str | None,
+        typer.Option(
+            "--where", "-w", help='Structured filters as JSON (e.g., \'{"status": "open"}\')'
+        ),
     ] = None,
 ) -> None:
-    """Search records using semantic search.
+    """Search records using semantic search with optional filters.
 
     Examples:
         kameleondb search "customer complaint about shipping"
         kameleondb search "email address" --entity Contact --limit 5
         kameleondb search "Python tutorial" --threshold 0.7 --json
+        kameleondb search "bug report" --entity Ticket --where '{"status": "open", "priority": "high"}'
     """
     try:
         cli_ctx: CLIContext = ctx.obj
@@ -45,28 +54,46 @@ def search_command(
             )
             raise typer.Exit(1)
 
+        # Parse where filter if provided
+        where_dict = None
+        if where:
+            try:
+                where_dict = json.loads(where)
+                if not isinstance(where_dict, dict):
+                    console.print("[red]Error:[/red] --where must be a JSON object")
+                    raise typer.Exit(1)
+            except json.JSONDecodeError as e:
+                console.print(f"[red]Error:[/red] Invalid JSON in --where: {e}")
+                raise typer.Exit(1)
+
         # Execute search
         results = db.search(
             query=query,
             entity=entity,
             limit=limit,
             min_score=min_score,
+            where=where_dict,
         )
 
         if cli_ctx.json_output:
             output = {
                 "query": query,
                 "entity": entity,
+                "where": where_dict,
                 "count": len(results),
                 "results": results,
             }
             console.print(json.dumps(output, indent=2))
         else:
             if not results:
-                console.print(f"[yellow]No results found for:[/yellow] {query}")
+                filter_info = f" with filters {where_dict}" if where_dict else ""
+                console.print(f"[yellow]No results found for:[/yellow] {query}{filter_info}")
                 return
 
-            table = Table(title=f"Search Results: {query}")
+            title = f"Search Results: {query}"
+            if where_dict:
+                title += f" [dim](filtered: {where_dict})[/dim]"
+            table = Table(title=title)
             table.add_column("Entity", style="cyan")
             table.add_column("ID", style="dim")
             table.add_column("Score", style="green")
@@ -76,10 +103,8 @@ def search_command(
                 # Parse data if it's a JSON string
                 data = r["data"]
                 if isinstance(data, str):
-                    try:
+                    with contextlib.suppress(json.JSONDecodeError):
                         data = json.loads(data)
-                    except json.JSONDecodeError:
-                        pass
 
                 # Build preview from matched_text or first field
                 preview = r.get("matched_text", "")[:80]
@@ -156,7 +181,7 @@ def embeddings_status(
             output = {**provider_info, "indexed_entities": indexed_entities}
             console.print(json.dumps(output, indent=2))
         else:
-            console.print(f"[green]✓[/green] Embeddings: enabled")
+            console.print("[green]✓[/green] Embeddings: enabled")
             console.print(f"  Provider: {provider_info['provider']}")
             console.print(f"  Model: {provider_info['model']}")
             console.print(f"  Dimensions: {provider_info['dimensions']}")
@@ -189,9 +214,7 @@ def embeddings_status(
 @embeddings_app.command("reindex")
 def embeddings_reindex(
     ctx: typer.Context,
-    entity: Annotated[
-        Optional[str], typer.Argument(help="Entity to reindex (omit for all)")
-    ] = None,
+    entity: Annotated[str | None, typer.Argument(help="Entity to reindex (omit for all)")] = None,
     force: Annotated[bool, typer.Option("--force", help="Force reindex all records")] = False,
 ) -> None:
     """Reindex embeddings for an entity or all entities.

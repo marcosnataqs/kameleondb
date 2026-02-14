@@ -9,13 +9,15 @@ single column, providing semantic locality and better agent reasoning.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
 from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+from kameleondb.core.compat import UTC
 
 # Dialect-aware JSON type: JSONB on PostgreSQL, JSON on SQLite
 # This allows the same models to work with both databases

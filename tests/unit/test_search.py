@@ -182,6 +182,90 @@ class TestSearchEngineBM25Only:
             assert result.scalar() == 0
 
 
+class TestSearchEngineWhereFilters:
+    """Test structured where filters in search."""
+
+    def test_apply_where_filters_exact_match(self):
+        """_apply_where_filters should filter results by exact field match."""
+        from kameleondb.search import SearchResult
+
+        results = [
+            SearchResult(
+                entity="Ticket",
+                id="1",
+                score=0.9,
+                data={"status": "open", "priority": "high", "title": "Bug A"},
+                matched_text="Bug A",
+            ),
+            SearchResult(
+                entity="Ticket",
+                id="2",
+                score=0.8,
+                data={"status": "closed", "priority": "high", "title": "Bug B"},
+                matched_text="Bug B",
+            ),
+            SearchResult(
+                entity="Ticket",
+                id="3",
+                score=0.7,
+                data={"status": "open", "priority": "low", "title": "Bug C"},
+                matched_text="Bug C",
+            ),
+        ]
+
+        from sqlalchemy import create_engine
+
+        from kameleondb.search import SearchEngine
+
+        engine = create_engine("sqlite:///:memory:")
+        search = SearchEngine(engine, embedding_provider=None)
+
+        # Filter by status=open
+        filtered = search._apply_where_filters(results, {"status": "open"})
+        assert len(filtered) == 2
+        assert all(r.data["status"] == "open" for r in filtered)
+
+        # Filter by status=open AND priority=high
+        filtered = search._apply_where_filters(results, {"status": "open", "priority": "high"})
+        assert len(filtered) == 1
+        assert filtered[0].id == "1"
+
+        # Filter with no matches
+        filtered = search._apply_where_filters(results, {"status": "pending"})
+        assert len(filtered) == 0
+
+    def test_apply_where_filters_json_string_data(self):
+        """_apply_where_filters should handle JSON string data."""
+        import json
+
+        from kameleondb.search import SearchResult
+
+        results = [
+            SearchResult(
+                entity="Ticket",
+                id="1",
+                score=0.9,
+                data=json.dumps({"status": "open", "title": "Bug"}),
+                matched_text="Bug",
+            ),
+        ]
+
+        from sqlalchemy import create_engine
+
+        from kameleondb.search import SearchEngine
+
+        engine = create_engine("sqlite:///:memory:")
+        search = SearchEngine(engine, embedding_provider=None)
+
+        # Should parse JSON string and filter
+        filtered = search._apply_where_filters(results, {"status": "open"})
+        assert len(filtered) == 1
+
+        # Should not match
+        filtered = search._apply_where_filters(results, {"status": "closed"})
+        assert len(filtered) == 0
+
+
 class TestSearchEngineSearch:
     """Test actual search execution."""
 

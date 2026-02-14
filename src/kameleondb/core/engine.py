@@ -61,6 +61,8 @@ class Entity:
                 entity_id=entity_def.id,
                 entity_name=self._name,
                 fields=fields,
+                storage_mode=entity_def.storage_mode,
+                dedicated_table_name=entity_def.dedicated_table_name,
             )
 
         return self._query
@@ -610,11 +612,12 @@ class Entity:
             ValueError: If relationship is not many-to-many
             RecordNotFoundError: If source or target record doesn't exist
         """
-        from datetime import UTC, datetime
+        from datetime import datetime
         from uuid import uuid4
 
         from sqlalchemy import text
 
+        from kameleondb.core.compat import UTC
         from kameleondb.exceptions import RecordNotFoundError
 
         # Verify source record exists
@@ -778,12 +781,13 @@ class Entity:
         if not target_ids:
             return 0
 
-        from datetime import UTC, datetime
+        from datetime import datetime
         from uuid import uuid4
 
         from sqlalchemy import text
         from sqlalchemy.exc import IntegrityError
 
+        from kameleondb.core.compat import UTC
         from kameleondb.exceptions import RecordNotFoundError
 
         # Verify source record exists
@@ -1779,6 +1783,7 @@ class KameleonDB:
         entities: list[str] | None = None,
         limit: int = 10,
         min_score: float = 0.0,
+        where: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Search records using hybrid BM25 + vector search.
 
@@ -1791,6 +1796,7 @@ class KameleonDB:
             entities: List of entities to search (optional)
             limit: Maximum results to return (default 10)
             min_score: Minimum score threshold (default 0.0)
+            where: Structured filters (e.g., {"status": "open", "priority": "high"})
 
         Returns:
             List of search results with:
@@ -1808,6 +1814,9 @@ class KameleonDB:
             >>> results = db.search("shipping complaint")
             >>> for r in results:
             ...     print(f"{r['entity']}/{r['id']}: {r['score']:.2f}")
+
+            # With structured filters
+            >>> results = db.search("complaint", entity="Ticket", where={"status": "open"})
         """
         if not self._search_engine:
             raise RuntimeError(
@@ -1820,6 +1829,7 @@ class KameleonDB:
             entities=entities,
             limit=limit,
             min_score=min_score,
+            where=where,
         )
 
         # Convert to dicts for JSON serialization

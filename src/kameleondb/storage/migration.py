@@ -9,12 +9,13 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from kameleondb.core.compat import UTC
 from kameleondb.schema.models import (
     EntityDefinition,
     FieldDefinition,
