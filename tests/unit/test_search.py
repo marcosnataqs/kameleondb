@@ -182,6 +182,169 @@ class TestSearchEngineBM25Only:
             assert result.scalar() == 0
 
 
+class TestSearchEngineSearch:
+    """Test actual search execution."""
+
+    def test_bm25_search_returns_matching_records(self, tmp_path):
+        """BM25 search should return records matching query keywords."""
+        from sqlalchemy import create_engine
+
+        from kameleondb.search import SearchEngine
+
+        engine = create_engine(f"sqlite:///{tmp_path}/test.db")
+        search = SearchEngine(engine, embedding_provider=None)
+
+        # Index records with different content
+        search.index_record("Article", "1", "Python programming tutorial for beginners")
+        search.index_record("Article", "2", "Advanced JavaScript patterns and best practices")
+        search.index_record("Article", "3", "Python data science guide with pandas")
+        search.index_record("Article", "4", "Ruby on Rails web development")
+
+        # Search for Python-related articles
+        results = search.search("Python programming")
+
+        # Should return Python articles (1 and 3), not JavaScript or Ruby
+        assert len(results) > 0
+        result_ids = {r.id for r in results}
+        assert "1" in result_ids or "3" in result_ids
+        # Results should be ordered by relevance (article 1 should score higher)
+        assert results[0].id == "1"
+
+    def test_search_respects_limit(self, tmp_path):
+        """Search should respect limit parameter."""
+        from sqlalchemy import create_engine
+
+        from kameleondb.search import SearchEngine
+
+        engine = create_engine(f"sqlite:///{tmp_path}/test.db")
+        search = SearchEngine(engine, embedding_provider=None)
+
+        # Index 5 articles about Python
+        for i in range(1, 6):
+            search.index_record("Article", str(i), f"Python tutorial number {i}")
+
+        # Search with limit=2
+        results = search.search("Python", limit=2)
+        assert len(results) == 2
+
+        # Search with limit=3
+        results = search.search("Python", limit=3)
+        assert len(results) == 3
+
+    def test_search_filters_by_entity(self, tmp_path):
+        """Search should filter results by entity when specified."""
+        from sqlalchemy import create_engine
+
+        from kameleondb.search import SearchEngine
+
+        engine = create_engine(f"sqlite:///{tmp_path}/test.db")
+        search = SearchEngine(engine, embedding_provider=None)
+
+        # Index records in different entities
+        search.index_record("Article", "a1", "Python programming guide")
+        search.index_record("Article", "a2", "Python web development")
+        search.index_record("Tutorial", "t1", "Python tutorial for beginners")
+        search.index_record("Book", "b1", "Learning Python book")
+
+        # Search only in Article entity
+        results = search.search("Python", entities=["Article"])
+        assert len(results) == 2
+        assert all(r.entity == "Article" for r in results)
+
+        # Search only in Tutorial entity
+        results = search.search("Python", entities=["Tutorial"])
+        assert len(results) == 1
+        assert results[0].entity == "Tutorial"
+
+    def test_search_filters_by_min_score(self, tmp_path):
+        """Search should exclude results below min_score threshold."""
+        from sqlalchemy import create_engine
+
+        from kameleondb.search import SearchEngine
+
+        engine = create_engine(f"sqlite:///{tmp_path}/test.db")
+        search = SearchEngine(engine, embedding_provider=None)
+
+        # Index one highly relevant and one loosely relevant record
+        search.index_record("Article", "1", "Python programming Python Python")
+        search.index_record("Article", "2", "introduction to programming")
+
+        # Search with no min_score
+        results = search.search("Python programming")
+        no_filter_count = len(results)
+
+        # Search with high min_score - should filter out weak matches
+        results = search.search("Python programming", min_score=5.0)
+        assert len(results) <= no_filter_count
+        # All results should have score >= min_score
+        assert all(r.score >= 5.0 for r in results)
+
+    def test_search_orders_by_relevance(self, tmp_path):
+        """Results should be ordered by relevance score."""
+        from sqlalchemy import create_engine
+
+        from kameleondb.search import SearchEngine
+
+        engine = create_engine(f"sqlite:///{tmp_path}/test.db")
+        search = SearchEngine(engine, embedding_provider=None)
+
+        # Index records with varying relevance to query
+        search.index_record("Article", "1", "Python programming tutorial")  # high relevance
+        search.index_record("Article", "2", "tutorial introduction")  # low relevance
+        search.index_record("Article", "3", "Python Python programming")  # higher relevance
+
+        results = search.search("Python programming")
+
+        # Results should be ordered by score (descending)
+        scores = [r.score for r in results]
+        assert scores == sorted(scores, reverse=True)
+
+        # Most relevant article should be first
+        assert results[0].id == "3"  # has "Python" twice
+
+    def test_search_across_multiple_entities(self, tmp_path):
+        """Search should work across multiple entities when entities= is provided."""
+        from sqlalchemy import create_engine
+
+        from kameleondb.search import SearchEngine
+
+        engine = create_engine(f"sqlite:///{tmp_path}/test.db")
+        search = SearchEngine(engine, embedding_provider=None)
+
+        # Index records in different entities
+        search.index_record("Article", "a1", "Python programming")
+        search.index_record("Tutorial", "t1", "Python tutorial")
+        search.index_record("Book", "b1", "Python book")
+        search.index_record("Video", "v1", "JavaScript video")
+
+        # Search across Article and Tutorial only
+        results = search.search("Python", entities=["Article", "Tutorial"])
+        assert len(results) == 2
+        entities = {r.entity for r in results}
+        assert entities == {"Article", "Tutorial"}
+
+        # Search across all entities (no filter)
+        results = search.search("Python")
+        assert len(results) == 3  # Article, Tutorial, Book
+
+    def test_search_returns_empty_list_when_no_matches(self, tmp_path):
+        """Search should return empty list when nothing matches."""
+        from sqlalchemy import create_engine
+
+        from kameleondb.search import SearchEngine
+
+        engine = create_engine(f"sqlite:///{tmp_path}/test.db")
+        search = SearchEngine(engine, embedding_provider=None)
+
+        # Index some records
+        search.index_record("Article", "1", "Python programming")
+        search.index_record("Article", "2", "JavaScript development")
+
+        # Search for something unrelated
+        results = search.search("Rust quantum computing blockchain")
+        assert results == []
+
+
 class TestKameleonDBSearchIntegration:
     """Test search integration with KameleonDB."""
 
