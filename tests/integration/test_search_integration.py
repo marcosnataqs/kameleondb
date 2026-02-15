@@ -10,7 +10,11 @@ class TestSearchIntegration:
 
     def test_bm25_search_returns_matching_records(self, tmp_path):
         """BM25 search should return records matching query keywords."""
-        db = KameleonDB(f"sqlite:///{tmp_path}/test.db", embeddings=True)
+        db = KameleonDB(
+            f"sqlite:///{tmp_path}/test.db",
+            embeddings=True,
+            embedding_provider=None,
+        )
 
         try:
             # Create entity and insert records with different content
@@ -22,22 +26,30 @@ class TestSearchIntegration:
                 ],
             )
 
-            articles.insert({
-                "title": "Python Programming Tutorial",
-                "body": "Learn Python programming from scratch for beginners",
-            })
-            articles.insert({
-                "title": "Advanced JavaScript Patterns",
-                "body": "Best practices and design patterns in JavaScript development",
-            })
-            articles.insert({
-                "title": "Python Data Science",
-                "body": "Comprehensive guide to data science with pandas and Python",
-            })
-            articles.insert({
-                "title": "Ruby on Rails",
-                "body": "Web development with Ruby framework",
-            })
+            articles.insert(
+                {
+                    "title": "Python Programming Tutorial",
+                    "body": "Learn Python programming from scratch for beginners",
+                }
+            )
+            articles.insert(
+                {
+                    "title": "Advanced JavaScript Patterns",
+                    "body": "Best practices and design patterns in JavaScript development",
+                }
+            )
+            articles.insert(
+                {
+                    "title": "Python Data Science",
+                    "body": "Comprehensive guide to data science with pandas and Python",
+                }
+            )
+            articles.insert(
+                {
+                    "title": "Ruby on Rails",
+                    "body": "Web development with Ruby framework",
+                }
+            )
 
             # Search for Python-related articles
             results = db.search("Python programming")
@@ -55,7 +67,11 @@ class TestSearchIntegration:
 
     def test_search_respects_limit(self, tmp_path):
         """Search should respect limit parameter."""
-        db = KameleonDB(f"sqlite:///{tmp_path}/test.db", embeddings=True)
+        db = KameleonDB(
+            f"sqlite:///{tmp_path}/test.db",
+            embeddings=True,
+            embedding_provider=None,
+        )
 
         try:
             articles = db.create_entity(
@@ -80,7 +96,11 @@ class TestSearchIntegration:
 
     def test_search_filters_by_entity(self, tmp_path):
         """Search should filter results by entity when specified."""
-        db = KameleonDB(f"sqlite:///{tmp_path}/test.db", embeddings=True)
+        db = KameleonDB(
+            f"sqlite:///{tmp_path}/test.db",
+            embeddings=True,
+            embedding_provider=None,
+        )
 
         try:
             # Create multiple entities
@@ -111,14 +131,18 @@ class TestSearchIntegration:
             # Search only in Tutorial entity
             results = db.search("Python", entities=["Tutorial"])
             assert len(results) == 1
-            assert results[0].entity == "Tutorial"
+            assert results[0]["entity"] == "Tutorial"
 
         finally:
             db.close()
 
     def test_search_filters_by_min_score(self, tmp_path):
         """Search should exclude results below min_score threshold."""
-        db = KameleonDB(f"sqlite:///{tmp_path}/test.db", embeddings=True)
+        db = KameleonDB(
+            f"sqlite:///{tmp_path}/test.db",
+            embeddings=True,
+            embedding_provider=None,
+        )
 
         try:
             articles = db.create_entity(
@@ -145,7 +169,11 @@ class TestSearchIntegration:
 
     def test_search_orders_by_relevance(self, tmp_path):
         """Results should be ordered by relevance score."""
-        db = KameleonDB(f"sqlite:///{tmp_path}/test.db", embeddings=True)
+        db = KameleonDB(
+            f"sqlite:///{tmp_path}/test.db",
+            embeddings=True,
+            embedding_provider=None,
+        )
 
         try:
             articles = db.create_entity(
@@ -154,8 +182,8 @@ class TestSearchIntegration:
             )
 
             # Insert records with varying relevance to query
-            id1 = articles.insert({"content": "Python programming tutorial"})  # medium relevance
-            id2 = articles.insert({"content": "tutorial introduction"})  # low relevance
+            articles.insert({"content": "Python programming tutorial"})  # medium relevance
+            articles.insert({"content": "tutorial introduction"})  # low relevance
             id3 = articles.insert({"content": "Python Python programming"})  # high relevance
 
             results = db.search("Python programming")
@@ -165,14 +193,18 @@ class TestSearchIntegration:
             assert scores == sorted(scores, reverse=True)
 
             # Most relevant article (id3 with "Python" twice) should be first
-            assert results[0].id == id3
+            assert results[0]["id"] == id3
 
         finally:
             db.close()
 
     def test_search_across_multiple_entities(self, tmp_path):
         """Search should work across multiple entities when entities= is provided."""
-        db = KameleonDB(f"sqlite:///{tmp_path}/test.db", embeddings=True)
+        db = KameleonDB(
+            f"sqlite:///{tmp_path}/test.db",
+            embeddings=True,
+            embedding_provider=None,
+        )
 
         try:
             articles = db.create_entity(
@@ -213,7 +245,11 @@ class TestSearchIntegration:
 
     def test_search_returns_empty_list_when_no_matches(self, tmp_path):
         """Search should return empty list when nothing matches."""
-        db = KameleonDB(f"sqlite:///{tmp_path}/test.db", embeddings=True)
+        db = KameleonDB(
+            f"sqlite:///{tmp_path}/test.db",
+            embeddings=True,
+            embedding_provider=None,
+        )
 
         try:
             articles = db.create_entity(
@@ -234,34 +270,44 @@ class TestSearchIntegration:
 
     def test_search_with_materialized_storage(self, tmp_path):
         """Search should work with entities using materialized (dedicated table) storage."""
-        db = KameleonDB(f"sqlite:///{tmp_path}/test.db", embeddings=True)
+        db = KameleonDB(
+            f"sqlite:///{tmp_path}/test.db",
+            embeddings=True,
+            embedding_provider=None,
+        )
 
         try:
-            # Create entity with materialized storage
+            # Create entity in shared mode first
             articles = db.create_entity(
                 "Article",
                 fields=[
                     {"name": "title", "type": "string"},
                     {"name": "content", "type": "text"},
                 ],
-                storage_mode="materialized",
             )
 
-            # Insert records
-            id1 = articles.insert({
-                "title": "Python Guide",
-                "content": "Complete Python programming guide",
-            })
-            id2 = articles.insert({
-                "title": "JavaScript Patterns",
-                "content": "Modern JavaScript development patterns",
-            })
+            # Insert records (in shared mode)
+            id1 = articles.insert(
+                {
+                    "title": "Python Guide",
+                    "content": "Complete Python programming guide",
+                }
+            )
+            articles.insert(
+                {
+                    "title": "JavaScript Patterns",
+                    "content": "Modern JavaScript development patterns",
+                }
+            )
 
-            # Search should work the same
+            # Materialize to dedicated storage
+            db.materialize_entity("Article")
+
+            # Search should still work after materialization
             results = db.search("Python programming")
             assert len(results) > 0
-            assert results[0].id == id1
-            assert "Python" in results[0].data.get("title", "")
+            assert results[0]["id"] == id1
+            assert "Python" in results[0]["data"].get("title", "")
 
         finally:
             db.close()
@@ -282,14 +328,18 @@ class TestSearchPostgreSQL:
             ],
         )
 
-        articles.insert({
-            "title": "Python Tutorial",
-            "body": "Learn Python programming",
-        })
-        articles.insert({
-            "title": "Ruby Guide",
-            "body": "Ruby programming guide",
-        })
+        articles.insert(
+            {
+                "title": "Python Tutorial",
+                "body": "Learn Python programming",
+            }
+        )
+        articles.insert(
+            {
+                "title": "Ruby Guide",
+                "body": "Ruby programming guide",
+            }
+        )
 
         # Search should work
         results = pg_db.search("Python programming")

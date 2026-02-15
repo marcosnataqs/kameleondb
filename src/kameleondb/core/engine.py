@@ -1204,26 +1204,29 @@ class KameleonDB:
 
     def _init_search_engine(
         self,
-        provider: str | Any,
+        provider: str | Any | None,
         model: str | None,
         dimensions: int | None,
     ) -> None:
         """Initialize the search engine with embedding provider."""
-        from kameleondb.embeddings import EmbeddingProvider, get_provider
         from kameleondb.search import SearchEngine
 
-        # Build provider kwargs
-        kwargs: dict[str, Any] = {}
-        if model:
-            kwargs["model"] = model
-        if dimensions:
-            kwargs["dimensions"] = dimensions
+        embedding_provider = None
+        if provider is not None:
+            from kameleondb.embeddings import EmbeddingProvider, get_provider
 
-        # Get or create provider
-        if isinstance(provider, EmbeddingProvider):
-            embedding_provider = provider
-        else:
-            embedding_provider = get_provider(provider, **kwargs)
+            # Build provider kwargs
+            kwargs: dict[str, Any] = {}
+            if model:
+                kwargs["model"] = model
+            if dimensions:
+                kwargs["dimensions"] = dimensions
+
+            # Get or create provider
+            if isinstance(provider, EmbeddingProvider):
+                embedding_provider = provider
+            else:
+                embedding_provider = get_provider(provider, **kwargs)
 
         self._search_engine = SearchEngine(
             self._connection.engine,
@@ -1832,17 +1835,25 @@ class KameleonDB:
             where=where,
         )
 
-        # Convert to dicts for JSON serialization
-        return [
-            {
-                "entity": r.entity,
-                "id": r.id,
-                "score": r.score,
-                "data": r.data,
-                "matched_text": r.matched_text,
-            }
-            for r in results
-        ]
+        # Convert to dicts for JSON serialization, enriching empty data
+        # via Entity lookup (handles dedicated storage mode)
+        output = []
+        for r in results:
+            data = r.data
+            if not data:
+                record = self.entity(r.entity).find_by_id(r.id)
+                if record:
+                    data = record.get("data", record)
+            output.append(
+                {
+                    "entity": r.entity,
+                    "id": r.id,
+                    "score": r.score,
+                    "data": data,
+                    "matched_text": r.matched_text,
+                }
+            )
+        return output
 
     def reindex_embeddings(self, entity_name: str | None = None) -> dict[str, Any]:
         """Reindex embeddings for an entity or all entities.

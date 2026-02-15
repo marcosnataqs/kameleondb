@@ -6,6 +6,7 @@ Combines BM25 (keyword) and vector (semantic) search using Reciprocal Rank Fusio
 from __future__ import annotations
 
 import contextlib
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -735,21 +736,28 @@ class SearchEngine:
             record_id: Record ID to fetch
             _entity_name: Entity name (unused, kept for future storage mode handling)
         """
-        with Session(self._engine) as session:
-            # Try shared storage first
-            result = session.execute(
-                text("""
-                SELECT data FROM kdb_records
-                WHERE id = :id AND is_deleted = false
-            """),
-                {"id": record_id},
-            )
-            row = result.fetchone()
-            if row:
-                return row[0] if row[0] else {}
+        try:
+            with Session(self._engine) as session:
+                # Try shared storage first
+                result = session.execute(
+                    text("""
+                    SELECT data FROM kdb_records
+                    WHERE id = :id AND is_deleted = false
+                """),
+                    {"id": record_id},
+                )
+                row = result.fetchone()
+                if row and row[0]:
+                    data = row[0]
+                    if isinstance(data, str):
+                        return json.loads(data)
+                    return data
+        except Exception:
+            # Table may not exist when SearchEngine is used standalone
+            pass
 
-            # Record not found in shared storage
-            return {}
+        # Record not found in shared storage
+        return {}
 
     def get_status(self, entity: str | None = None) -> list[IndexStatus]:
         """Get indexing status.
