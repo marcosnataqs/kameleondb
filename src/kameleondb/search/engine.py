@@ -87,7 +87,7 @@ class SearchEngine:
             session.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             has_pgvector = True
         except Exception:
-            pass  # pgvector not available, will use BM25 only
+            session.rollback()  # Reset aborted transaction state
 
         dimensions = self._provider.dimensions if self._provider else 384
 
