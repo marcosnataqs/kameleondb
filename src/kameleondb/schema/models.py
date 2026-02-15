@@ -365,6 +365,9 @@ class Record(Base):
     entity_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("kdb_entity_definitions.id", ondelete="CASCADE"), nullable=False
     )
+    # Denormalized entity name for direct filtering without JOINs (issue #44)
+    # Index is created in __table_args__ as composite with is_deleted
+    entity_name: Mapped[str] = mapped_column(String(255), nullable=False)
 
     # JSON column stores all field values (JSONB on PostgreSQL, JSON on SQLite)
     data: Mapped[dict[str, Any]] = mapped_column(JSONType, nullable=False, default=dict)
@@ -380,13 +383,17 @@ class Record(Base):
     entity: Mapped[EntityDefinition] = relationship("EntityDefinition")
 
     # Indexes for efficient lookups
-    __table_args__ = (Index("ix_kdb_records_entity", "entity_id", "is_deleted"),)
+    __table_args__ = (
+        Index("ix_kdb_records_entity", "entity_id", "is_deleted"),
+        Index("ix_kdb_records_entity_name", "entity_name", "is_deleted"),
+    )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         result = {
             "id": self.id,
             "entity_id": self.entity_id,
+            "entity_name": self.entity_name,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "created_by": self.created_by,
@@ -396,6 +403,32 @@ class Record(Base):
         if self.data:
             result.update(self.data)
         return result
+
+
+# === Schema Version Tracking (for migrations) ===
+
+
+class SchemaVersion(Base):
+    """Tracks the current schema version for KameleonDB internal tables.
+
+    This enables automatic migrations when users upgrade the package.
+    """
+
+    __tablename__ = "kdb_schema_version"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "id": self.id,
+            "version": self.version,
+            "applied_at": self.applied_at.isoformat() if self.applied_at else None,
+            "description": self.description,
+        }
 
 
 # === Query Metrics (ADR-002: Query Intelligence) ===
