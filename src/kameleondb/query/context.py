@@ -55,7 +55,7 @@ POSTGRESQL_EXAMPLE_QUERIES = [
         "sql": """
 SELECT id, data, created_at
 FROM kdb_records
-WHERE entity_id = '<entity_uuid>'
+WHERE entity_name = 'Customer'
   AND is_deleted = false
 """,
     },
@@ -64,7 +64,7 @@ WHERE entity_id = '<entity_uuid>'
         "sql": """
 SELECT id, data
 FROM kdb_records
-WHERE entity_id = '<entity_uuid>'
+WHERE entity_name = 'Order'
   AND data->>'status' = 'active'
   AND is_deleted = false
 """,
@@ -74,7 +74,7 @@ WHERE entity_id = '<entity_uuid>'
         "sql": """
 SELECT id, data
 FROM kdb_records
-WHERE entity_id = '<entity_uuid>'
+WHERE entity_name = 'Order'
   AND (data->>'total')::numeric > 100.00
   AND is_deleted = false
 """,
@@ -166,7 +166,7 @@ SQLITE_EXAMPLE_QUERIES = [
         "sql": """
 SELECT id, data, created_at
 FROM kdb_records
-WHERE entity_id = '<entity_uuid>'
+WHERE entity_name = 'Customer'
   AND is_deleted = 0
 """,
     },
@@ -175,7 +175,7 @@ WHERE entity_id = '<entity_uuid>'
         "sql": """
 SELECT id, data
 FROM kdb_records
-WHERE entity_id = '<entity_uuid>'
+WHERE entity_name = 'Order'
   AND json_extract(data, '$.status') = 'active'
   AND is_deleted = 0
 """,
@@ -185,7 +185,7 @@ WHERE entity_id = '<entity_uuid>'
         "sql": """
 SELECT id, data
 FROM kdb_records
-WHERE entity_id = '<entity_uuid>'
+WHERE entity_name = 'Order'
   AND CAST(json_extract(data, '$.total') AS REAL) > 100.00
   AND is_deleted = 0
 """,
@@ -195,7 +195,7 @@ WHERE entity_id = '<entity_uuid>'
         "sql": """
 SELECT id, data
 FROM kdb_records
-WHERE entity_id = '<entity_uuid>'
+WHERE entity_name = 'Contact'
   AND json_extract(data, '$.name') LIKE '%search_term%' COLLATE NOCASE
   AND is_deleted = 0
 """,
@@ -205,7 +205,7 @@ WHERE entity_id = '<entity_uuid>'
         "sql": """
 SELECT id, data
 FROM kdb_records
-WHERE entity_id = '<entity_uuid>'
+WHERE entity_name = 'Order'
   AND json_extract(data, '$.status') IN ('pending', 'processing')
   AND is_deleted = 0
 """,
