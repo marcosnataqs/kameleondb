@@ -67,13 +67,15 @@ def search_command(
                 raise typer.Exit(1)
 
         # Execute search
-        results = db.search(
-            query=query,
-            entity=entity,
-            limit=limit,
-            min_score=min_score,
-            where=where_dict,
-        )
+        search_kwargs: dict[str, object] = {
+            "query": query,
+            "entity": entity,
+            "limit": limit,
+            "where": where_dict,
+        }
+        if min_score is not None:
+            search_kwargs["min_score"] = min_score
+        results = db.search(**search_kwargs)  # type: ignore[arg-type]
 
         if cli_ctx.json_output:
             output = {
@@ -154,8 +156,8 @@ def embeddings_status(
             "dimensions": 0,
         }
 
-        if db._search_engine and db._search_engine._embedding_provider:
-            provider = db._search_engine._embedding_provider
+        if db._search_engine and db._search_engine._provider:
+            provider = db._search_engine._provider
             provider_info["model"] = getattr(provider, "model_name", "unknown")
             provider_info["dimensions"] = getattr(provider, "dimensions", 0)
             # Detect provider type

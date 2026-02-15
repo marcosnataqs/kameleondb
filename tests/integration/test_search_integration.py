@@ -317,31 +317,45 @@ class TestSearchIntegration:
 class TestSearchPostgreSQL:
     """Test search with PostgreSQL backend."""
 
-    def test_search_postgresql(self, pg_db: KameleonDB):
+    def test_search_postgresql(self, postgresql_url: str):
         """Search should work with PostgreSQL backend."""
-        # Create entity and insert records
-        articles = pg_db.create_entity(
-            "Article",
-            fields=[
-                {"name": "title", "type": "string"},
-                {"name": "body", "type": "text"},
-            ],
-        )
+        from sqlalchemy import text
 
-        articles.insert(
-            {
-                "title": "Python Tutorial",
-                "body": "Learn Python programming",
-            }
-        )
-        articles.insert(
-            {
-                "title": "Ruby Guide",
-                "body": "Ruby programming guide",
-            }
-        )
+        db = KameleonDB(postgresql_url, embeddings=True, embedding_provider=None)
+        try:
+            # Create entity and insert records
+            articles = db.create_entity(
+                "Article",
+                fields=[
+                    {"name": "title", "type": "string"},
+                    {"name": "body", "type": "text"},
+                ],
+            )
 
-        # Search should work
-        results = pg_db.search("Python programming")
-        assert len(results) > 0
-        assert any("Python" in r["data"].get("title", "") for r in results)
+            articles.insert(
+                {
+                    "title": "Python Tutorial",
+                    "body": "Learn Python programming",
+                }
+            )
+            articles.insert(
+                {
+                    "title": "Ruby Guide",
+                    "body": "Ruby programming guide",
+                }
+            )
+
+            # Search should work
+            results = db.search("Python programming")
+            assert len(results) > 0
+            assert any("Python" in r["data"].get("title", "") for r in results)
+        finally:
+            # Cleanup
+            with db._connection.engine.connect() as conn:
+                result = conn.execute(
+                    text("SELECT tablename FROM pg_tables WHERE tablename LIKE 'kdb_%'")
+                )
+                for row in result:
+                    conn.execute(text(f'DROP TABLE IF EXISTS "{row[0]}" CASCADE'))
+                conn.commit()
+            db.close()

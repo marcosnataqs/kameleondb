@@ -750,8 +750,9 @@ class SearchEngine:
                 if row and row[0]:
                     data = row[0]
                     if isinstance(data, str):
-                        return json.loads(data)
-                    return data
+                        parsed: dict[str, Any] = json.loads(data)
+                        return parsed
+                    return dict(data)
         except Exception:
             # Table may not exist when SearchEngine is used standalone
             pass
