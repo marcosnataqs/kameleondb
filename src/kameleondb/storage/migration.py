@@ -378,6 +378,7 @@ class StorageMigration:
                         record = Record(
                             id=row["id"],
                             entity_id=entity.id,
+                            entity_name=entity.name,  # Denormalized for direct filtering
                             data=data,
                             created_at=created_at,
                             updated_at=updated_at,

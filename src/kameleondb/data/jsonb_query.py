@@ -210,6 +210,7 @@ class JSONBQuery:
                 record = Record(
                     id=record_id,
                     entity_id=self._entity_id,
+                    entity_name=self._entity_name,  # Denormalized for direct filtering
                     data=json_data,  # All fields in one JSON column
                     created_at=now,
                     updated_at=now,
@@ -262,6 +263,7 @@ class JSONBQuery:
                     record = Record(
                         id=record_id,
                         entity_id=self._entity_id,
+                        entity_name=self._entity_name,  # Denormalized for direct filtering
                         data=json_data,
                         created_at=now,
                         updated_at=now,

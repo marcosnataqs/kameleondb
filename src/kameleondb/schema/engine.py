@@ -59,9 +59,20 @@ class SchemaEngine:
         self._initialized = False
 
     def initialize(self) -> None:
-        """Create meta-tables if they don't exist."""
+        """Create meta-tables if they don't exist and run pending migrations."""
         if not self._initialized:
             Base.metadata.create_all(self._connection.engine)
+
+            # Run any pending schema migrations
+            from kameleondb.schema.migrations import run_migrations
+
+            applied = run_migrations(self._connection.engine)
+            if applied:
+                import logging
+
+                logger = logging.getLogger(__name__)
+                logger.info(f"Applied {len(applied)} schema migration(s): {applied}")
+
             self._initialized = True
 
     def _get_session(self) -> Session:
