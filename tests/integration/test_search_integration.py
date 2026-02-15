@@ -312,6 +312,74 @@ class TestSearchIntegration:
         finally:
             db.close()
 
+    def test_embeddings_status_shows_pending_count(self, tmp_path):
+        """Embeddings status should show correct pending count."""
+        db = KameleonDB(
+            f"sqlite:///{tmp_path}/test.db",
+            embeddings=True,
+            embedding_provider=None,
+        )
+
+        try:
+            # Create entity and insert records
+            articles = db.create_entity(
+                "Article",
+                fields=[
+                    {"name": "title", "type": "string"},
+                    {"name": "content", "type": "text"},
+                ],
+            )
+
+            # Insert 5 records
+            for i in range(5):
+                articles.insert({"title": f"Article {i}", "content": f"Content {i}"})
+
+            # Check embedding status - should show all indexed and 0 pending
+            # (BM25 indexing happens on insert)
+            status = db.embedding_status(entity_name="Article")
+            assert len(status) == 1
+            assert status[0]["entity"] == "Article"
+            assert status[0]["indexed"] == 5
+            assert status[0]["pending"] == 0
+
+        finally:
+            db.close()
+
+    def test_embeddings_status_pending_count_with_materialized(self, tmp_path):
+        """Pending count should work correctly with materialized entities."""
+        db = KameleonDB(
+            f"sqlite:///{tmp_path}/test.db",
+            embeddings=True,
+            embedding_provider=None,
+        )
+
+        try:
+            # Create entity
+            articles = db.create_entity(
+                "Article",
+                fields=[
+                    {"name": "title", "type": "string"},
+                    {"name": "content", "type": "text"},
+                ],
+            )
+
+            # Insert 3 records
+            for i in range(3):
+                articles.insert({"title": f"Article {i}", "content": f"Content {i}"})
+
+            # Materialize the entity
+            db.materialize_entity("Article")
+
+            # Check embedding status - should still show correct counts
+            status = db.embedding_status(entity_name="Article")
+            assert len(status) == 1
+            assert status[0]["entity"] == "Article"
+            assert status[0]["indexed"] == 3
+            assert status[0]["pending"] == 0
+
+        finally:
+            db.close()
+
 
 @pytest.mark.integration
 class TestSearchPostgreSQL:

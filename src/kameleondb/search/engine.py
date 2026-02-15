@@ -760,6 +760,50 @@ class SearchEngine:
         # Record not found in shared storage
         return {}
 
+    def _get_entity_record_count(self, session: Session, entity_name: str) -> int:
+        """Get total record count for an entity (storage-mode aware).
+
+        Args:
+            session: SQLAlchemy session
+            entity_name: Entity name to count records for
+
+        Returns:
+            Total record count, or 0 if tables don't exist (standalone mode)
+        """
+        try:
+            # Get entity metadata to check storage mode
+            entity_result = session.execute(
+                text("""
+                    SELECT storage_mode, dedicated_table_name
+                    FROM kdb_entities
+                    WHERE name = :entity_name
+                """),
+                {"entity_name": entity_name},
+            )
+            entity_row = entity_result.fetchone()
+
+            if entity_row and entity_row[0] == "dedicated" and entity_row[1]:
+                # Materialized entity - count from dedicated table
+                table_name = entity_row[1]
+                count_result = session.execute(text(f'SELECT COUNT(*) FROM "{table_name}"'))
+            else:
+                # Shared storage - count from kdb_records
+                count_result = session.execute(
+                    text("""
+                        SELECT COUNT(*)
+                        FROM kdb_records r
+                        JOIN kdb_entities e ON r.entity_id = e.id
+                        WHERE e.name = :entity_name
+                    """),
+                    {"entity_name": entity_name},
+                )
+
+            count_row = count_result.fetchone()
+            return count_row[0] if count_row else 0
+        except Exception:
+            # Tables may not exist when SearchEngine is used standalone
+            return 0
+
     def get_status(self, entity: str | None = None) -> list[IndexStatus]:
         """Get indexing status.
 
@@ -787,12 +831,20 @@ class SearchEngine:
                 params,
             )
 
-            return [
-                IndexStatus(
-                    entity=row[0],
-                    indexed=row[1],
-                    pending=0,  # TODO: Calculate pending from entity record count
-                    last_updated=row[2],
+            statuses = []
+            for row in result.fetchall():
+                entity_name = row[0]
+                indexed_count = row[1]
+                total_count = self._get_entity_record_count(session, entity_name)
+                pending_count = max(0, total_count - indexed_count)
+
+                statuses.append(
+                    IndexStatus(
+                        entity=entity_name,
+                        indexed=indexed_count,
+                        pending=pending_count,
+                        last_updated=row[2],
+                    )
                 )
-                for row in result.fetchall()
-            ]
+
+            return statuses
