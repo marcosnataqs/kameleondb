@@ -28,7 +28,9 @@ CURRENT_VERSION = 1
 MIGRATIONS: dict[int, tuple[str, Callable[[Engine], None]]] = {}
 
 
-def migration(version: int, description: str):
+def migration(
+    version: int, description: str
+) -> Callable[[Callable[[Engine], None]], Callable[[Engine], None]]:
     """Decorator to register a migration function."""
 
     def decorator(func: Callable[[Engine], None]) -> Callable[[Engine], None]:
