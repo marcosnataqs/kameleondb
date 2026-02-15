@@ -356,16 +356,62 @@ class JSONBQuery:
             List of record dicts
         """
         try:
-            with Session(self._engine) as session:
-                records = (
-                    session.query(Record)
-                    .filter(Record.entity_id == self._entity_id)
-                    .filter(Record.is_deleted == False)  # noqa: E712
-                    .limit(limit)
-                    .all()
-                )
+            if self._storage_mode == "dedicated" and self._dedicated_table_name:
+                # Query from dedicated table using raw SQL
+                from sqlalchemy import text
 
-                return [self._record_to_dict(r) for r in records]
+                field_columns = [f.column_name for f in self._fields.values()]
+                select_cols = ["id", "created_at", "updated_at", "created_by"] + field_columns
+                cols_str = ", ".join(f'"{c}"' for c in select_cols)
+
+                with Session(self._engine) as session:
+                    result = session.execute(
+                        text(
+                            f"""
+                            SELECT {cols_str}
+                            FROM "{self._dedicated_table_name}"
+                            WHERE is_deleted = FALSE
+                            LIMIT :limit
+                        """
+                        ),
+                        {"limit": limit},
+                    )
+                    rows = result.fetchall()
+
+                    records = []
+                    for row in rows:
+                        row_dict = dict(zip(select_cols, row, strict=False))
+
+                        # Build record dict with field data from typed columns
+                        data = {}
+                        for field_name, field_def in self._fields.items():
+                            col_name = field_def.column_name
+                            if col_name in row_dict and row_dict[col_name] is not None:
+                                data[field_name] = row_dict[col_name]
+
+                        records.append(
+                            {
+                                "id": row_dict["id"],
+                                "created_at": row_dict["created_at"],
+                                "updated_at": row_dict["updated_at"],
+                                "created_by": row_dict.get("created_by"),
+                                **data,
+                            }
+                        )
+
+                    return records
+            else:
+                # Query from shared storage (kdb_records)
+                with Session(self._engine) as session:
+                    records = (
+                        session.query(Record)
+                        .filter(Record.entity_id == self._entity_id)
+                        .filter(Record.is_deleted == False)  # noqa: E712
+                        .limit(limit)
+                        .all()
+                    )
+
+                    return [self._record_to_dict(r) for r in records]
         except Exception as e:
             raise QueryError(f"Failed to find records: {e}") from e
 

@@ -298,6 +298,46 @@ class TestKameleonDBMaterialization:
         assert result.rows[0]["name"] == "Widget"
         assert result.rows[0]["price"] == 19.99
 
+    def test_find_all_returns_data_after_materialization(self, memory_db: KameleonDB) -> None:
+        """Test that Entity.find_all() works after materialization.
+
+        Regression test for GitHub issue #59: find_all() always queried the
+        shared kdb_records table, returning empty results after materialization
+        moved data to a dedicated table.
+        """
+        entity = memory_db.create_entity(
+            "Contact",
+            fields=[
+                {"name": "email", "type": "string"},
+                {"name": "name", "type": "string"},
+            ],
+        )
+
+        # Insert data before materialization
+        id1 = entity.insert({"email": "alice@example.com", "name": "Alice"})
+        entity.insert({"email": "bob@example.com", "name": "Bob"})
+
+        # Materialize to dedicated table
+        result = memory_db.materialize_entity("Contact")
+        assert result["success"]
+        assert result["records_migrated"] == 2
+
+        # Get a fresh entity reference (cache was cleared by materialize)
+        contact = memory_db.entity("Contact")
+
+        # find_all() must return data from the dedicated table
+        records = contact._get_query().find_all()
+        assert len(records) == 2
+
+        # Verify record contents
+        emails = {r["email"] for r in records}
+        assert emails == {"alice@example.com", "bob@example.com"}
+
+        # find_by_id() should also still work
+        record = contact.find_by_id(id1)
+        assert record is not None
+        assert record["email"] == "alice@example.com"
+
     def test_migration_counter_excludes_deleted_records(self, memory_db: KameleonDB) -> None:
         """Test that migration counter only counts non-deleted records."""
         # Create entity with 5 records
