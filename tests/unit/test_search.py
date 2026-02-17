@@ -476,3 +476,205 @@ class TestKameleonDBSearchIntegration:
             assert "published" not in embed_fields
         finally:
             db.close()
+
+
+class TestSearchEnginePendingCount:
+    """Test pending count calculation in get_status()."""
+
+    def test_pending_count_with_unindexed_records(self, tmp_path):
+        """get_status should show pending count for unindexed records."""
+        from sqlalchemy import create_engine, text
+
+        from kameleondb.search import SearchEngine
+
+        engine = create_engine(f"sqlite:///{tmp_path}/test.db")
+
+        # Create the required KameleonDB tables
+        with engine.connect() as conn:
+            # Create entity definitions table
+            conn.execute(
+                text("""
+                CREATE TABLE IF NOT EXISTS kdb_entity_definitions (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL UNIQUE,
+                    storage_mode TEXT NOT NULL DEFAULT 'shared',
+                    dedicated_table_name TEXT,
+                    is_active INTEGER NOT NULL DEFAULT 1
+                )
+            """)
+            )
+            # Create records table
+            conn.execute(
+                text("""
+                CREATE TABLE IF NOT EXISTS kdb_records (
+                    id TEXT PRIMARY KEY,
+                    entity_id TEXT NOT NULL,
+                    data TEXT,
+                    is_deleted INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+            )
+            # Insert an entity
+            conn.execute(
+                text("""
+                INSERT INTO kdb_entity_definitions (id, name, storage_mode, is_active)
+                VALUES ('entity-1', 'Article', 'shared', 1)
+            """)
+            )
+            # Insert some records
+            for i in range(5):
+                conn.execute(
+                    text("""
+                    INSERT INTO kdb_records (id, entity_id, data, is_deleted)
+                    VALUES (:id, 'entity-1', '{"title": "Test"}', 0)
+                """),
+                    {"id": f"rec-{i}"},
+                )
+            conn.commit()
+
+        # Initialize search engine
+        search = SearchEngine(engine, embedding_provider=None)
+
+        # Index only 2 records
+        search.index_record("Article", "rec-0", "First article content")
+        search.index_record("Article", "rec-1", "Second article content")
+
+        # Check status - should show 2 indexed, 3 pending
+        statuses = search.get_status()
+        assert len(statuses) == 1
+        assert statuses[0].entity == "Article"
+        assert statuses[0].indexed == 2
+        assert statuses[0].pending == 3  # 5 total - 2 indexed = 3 pending
+
+    def test_pending_count_for_fully_indexed_entity(self, tmp_path):
+        """get_status should show pending=0 when all records are indexed."""
+        from sqlalchemy import create_engine, text
+
+        from kameleondb.search import SearchEngine
+
+        engine = create_engine(f"sqlite:///{tmp_path}/test.db")
+
+        # Create the required KameleonDB tables
+        with engine.connect() as conn:
+            conn.execute(
+                text("""
+                CREATE TABLE IF NOT EXISTS kdb_entity_definitions (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL UNIQUE,
+                    storage_mode TEXT NOT NULL DEFAULT 'shared',
+                    dedicated_table_name TEXT,
+                    is_active INTEGER NOT NULL DEFAULT 1
+                )
+            """)
+            )
+            conn.execute(
+                text("""
+                CREATE TABLE IF NOT EXISTS kdb_records (
+                    id TEXT PRIMARY KEY,
+                    entity_id TEXT NOT NULL,
+                    data TEXT,
+                    is_deleted INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+            )
+            conn.execute(
+                text("""
+                INSERT INTO kdb_entity_definitions (id, name, storage_mode, is_active)
+                VALUES ('entity-1', 'Article', 'shared', 1)
+            """)
+            )
+            for i in range(3):
+                conn.execute(
+                    text("""
+                    INSERT INTO kdb_records (id, entity_id, data, is_deleted)
+                    VALUES (:id, 'entity-1', '{"title": "Test"}', 0)
+                """),
+                    {"id": f"rec-{i}"},
+                )
+            conn.commit()
+
+        # Initialize search engine
+        search = SearchEngine(engine, embedding_provider=None)
+
+        # Index all records
+        search.index_record("Article", "rec-0", "First article content")
+        search.index_record("Article", "rec-1", "Second article content")
+        search.index_record("Article", "rec-2", "Third article content")
+
+        # Check status - should show 3 indexed, 0 pending
+        statuses = search.get_status()
+        assert len(statuses) == 1
+        assert statuses[0].indexed == 3
+        assert statuses[0].pending == 0
+
+    def test_pending_count_shows_unindexed_entities(self, tmp_path):
+        """get_status should include entities with records but no indexing."""
+        from sqlalchemy import create_engine, text
+
+        from kameleondb.search import SearchEngine
+
+        engine = create_engine(f"sqlite:///{tmp_path}/test.db")
+
+        # Create the required KameleonDB tables
+        with engine.connect() as conn:
+            conn.execute(
+                text("""
+                CREATE TABLE IF NOT EXISTS kdb_entity_definitions (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL UNIQUE,
+                    storage_mode TEXT NOT NULL DEFAULT 'shared',
+                    dedicated_table_name TEXT,
+                    is_active INTEGER NOT NULL DEFAULT 1
+                )
+            """)
+            )
+            conn.execute(
+                text("""
+                CREATE TABLE IF NOT EXISTS kdb_records (
+                    id TEXT PRIMARY KEY,
+                    entity_id TEXT NOT NULL,
+                    data TEXT,
+                    is_deleted INTEGER NOT NULL DEFAULT 0
+                )
+            """)
+            )
+            # Insert two entities
+            conn.execute(
+                text("""
+                INSERT INTO kdb_entity_definitions (id, name, storage_mode, is_active)
+                VALUES ('entity-1', 'Article', 'shared', 1),
+                       ('entity-2', 'Product', 'shared', 1)
+            """)
+            )
+            # Insert records for both entities
+            conn.execute(
+                text("""
+                INSERT INTO kdb_records (id, entity_id, data, is_deleted)
+                VALUES ('rec-1', 'entity-1', '{"title": "Article"}', 0),
+                       ('rec-2', 'entity-2', '{"name": "Product"}', 0),
+                       ('rec-3', 'entity-2', '{"name": "Product 2"}', 0)
+            """)
+            )
+            conn.commit()
+
+        # Initialize search engine
+        search = SearchEngine(engine, embedding_provider=None)
+
+        # Only index Article, not Product
+        search.index_record("Article", "rec-1", "Article content")
+
+        # Check status - should show both entities
+        statuses = search.get_status()
+        assert len(statuses) == 2
+
+        # Find each entity's status
+        article_status = next((s for s in statuses if s.entity == "Article"), None)
+        product_status = next((s for s in statuses if s.entity == "Product"), None)
+
+        assert article_status is not None
+        assert article_status.indexed == 1
+        assert article_status.pending == 0
+
+        assert product_status is not None
+        assert product_status.indexed == 0
+        assert product_status.pending == 2  # 2 unindexed records
