@@ -403,7 +403,7 @@ class JSONBQuery:
             else:
                 # Query from shared storage (kdb_records)
                 with Session(self._engine) as session:
-                    records = (
+                    orm_records = (
                         session.query(Record)
                         .filter(Record.entity_id == self._entity_id)
                         .filter(Record.is_deleted == False)  # noqa: E712
@@ -411,7 +411,7 @@ class JSONBQuery:
                         .all()
                     )
 
-                    return [self._record_to_dict(r) for r in records]
+                    return [self._record_to_dict(r) for r in orm_records]
         except Exception as e:
             raise QueryError(f"Failed to find records: {e}") from e
 
