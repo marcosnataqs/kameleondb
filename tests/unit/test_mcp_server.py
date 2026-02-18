@@ -14,8 +14,11 @@ from collections.abc import Generator
 
 import pytest
 
-from kameleondb import KameleonDB
-from kameleondb.integrations.mcp import server as mcp_server
+# Skip entire module if mcp is not installed (optional dependency)
+pytest.importorskip("mcp", reason="mcp not installed (install with: pip install kameleondb[mcp])")
+
+from kameleondb import KameleonDB  # noqa: E402
+from kameleondb.integrations.mcp import server as mcp_server  # noqa: E402
 
 
 @pytest.fixture
