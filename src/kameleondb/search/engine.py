@@ -760,6 +760,66 @@ class SearchEngine:
         # Record not found in shared storage
         return {}
 
+    def _get_entity_record_counts(self, session: Session) -> dict[str, int]:
+        """Get total record counts for all entities (storage-mode aware).
+
+        Returns:
+            Dict mapping entity_name -> total_record_count
+        """
+        counts: dict[str, int] = {}
+
+        # Get all active entities with their storage info
+        try:
+            entities_result = session.execute(
+                text("""
+                    SELECT name, storage_mode, dedicated_table_name
+                    FROM kdb_entity_definitions
+                    WHERE is_active = true
+                """)
+            )
+        except Exception:
+            # Table doesn't exist (SearchEngine used standalone)
+            return counts
+
+        for row in entities_result.fetchall():
+            entity_name, storage_mode, dedicated_table = row[0], row[1], row[2]
+
+            try:
+                if storage_mode == "dedicated" and dedicated_table:
+                    # Count from dedicated table
+                    count_result = session.execute(
+                        text(f'SELECT COUNT(*) FROM "{dedicated_table}"')
+                    )
+                else:
+                    # Count from shared kdb_records table
+                    # Get entity_id first
+                    id_result = session.execute(
+                        text("""
+                            SELECT id FROM kdb_entity_definitions
+                            WHERE name = :name AND is_active = true
+                        """),
+                        {"name": entity_name},
+                    )
+                    entity_id_row = id_result.fetchone()
+                    if not entity_id_row:
+                        continue
+
+                    count_result = session.execute(
+                        text("""
+                            SELECT COUNT(*) FROM kdb_records
+                            WHERE entity_id = :entity_id AND is_deleted = false
+                        """),
+                        {"entity_id": entity_id_row[0]},
+                    )
+
+                count_row = count_result.fetchone()
+                counts[entity_name] = count_row[0] if count_row else 0
+            except Exception:
+                # Table might not exist yet
+                counts[entity_name] = 0
+
+        return counts
+
     def get_status(self, entity: str | None = None) -> list[IndexStatus]:
         """Get indexing status.
 
@@ -770,6 +830,9 @@ class SearchEngine:
             List of IndexStatus for each entity
         """
         with Session(self._engine) as session:
+            # Get total record counts for all entities
+            entity_counts = self._get_entity_record_counts(session)
+
             if entity:
                 where_clause = "WHERE entity_name = :entity"
                 params = {"entity": entity}
@@ -787,12 +850,36 @@ class SearchEngine:
                 params,
             )
 
-            return [
-                IndexStatus(
-                    entity=row[0],
-                    indexed=row[1],
-                    pending=0,  # TODO: Calculate pending from entity record count
-                    last_updated=row[2],
+            statuses = []
+            indexed_entities = set()
+
+            for row in result.fetchall():
+                entity_name = row[0]
+                indexed_count = row[1]
+                total_count = entity_counts.get(entity_name, 0)
+                pending_count = max(0, total_count - indexed_count)
+
+                indexed_entities.add(entity_name)
+                statuses.append(
+                    IndexStatus(
+                        entity=entity_name,
+                        indexed=indexed_count,
+                        pending=pending_count,
+                        last_updated=row[2],
+                    )
                 )
-                for row in result.fetchall()
-            ]
+
+            # Include entities with no indexed records but have records to index
+            if not entity:  # Only when not filtering by specific entity
+                for entity_name, total_count in entity_counts.items():
+                    if entity_name not in indexed_entities and total_count > 0:
+                        statuses.append(
+                            IndexStatus(
+                                entity=entity_name,
+                                indexed=0,
+                                pending=total_count,
+                                last_updated=None,
+                            )
+                        )
+
+            return statuses
