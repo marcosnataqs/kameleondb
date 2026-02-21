@@ -787,3 +787,71 @@ class TestErrorHandling:
         )
         assert result.exit_code == 1
         assert "type" in result.stdout.lower()
+
+
+class TestSearchCommands:
+    """Test semantic search CLI commands."""
+
+    def test_search_embeddings_not_enabled(self, temp_db: str) -> None:
+        """Test search fails when embeddings not enabled."""
+        result = runner.invoke(app, ["-d", temp_db, "search", "test query"])
+        assert result.exit_code == 1
+        assert "not enabled" in result.stdout.lower()
+
+    def test_search_embeddings_not_enabled_json(self, temp_db: str) -> None:
+        """Test search error in JSON mode."""
+        result = runner.invoke(app, ["-d", temp_db, "--json", "search", "test query"])
+        assert result.exit_code == 1
+        assert "not enabled" in result.stdout.lower()
+
+    def test_search_with_entity_flag(self, temp_db: str) -> None:
+        """Test search with --entity flag (still fails, embeddings not enabled)."""
+        result = runner.invoke(app, ["-d", temp_db, "search", "test", "--entity", "Contact"])
+        assert result.exit_code == 1
+        assert "not enabled" in result.stdout.lower()
+
+    def test_search_with_limit_flag(self, temp_db: str) -> None:
+        """Test search with --limit flag (still fails, embeddings not enabled)."""
+        result = runner.invoke(app, ["-d", temp_db, "search", "test", "--limit", "5"])
+        assert result.exit_code == 1
+        assert "not enabled" in result.stdout.lower()
+
+    def test_search_with_threshold_flag(self, temp_db: str) -> None:
+        """Test search with --threshold flag (still fails, embeddings not enabled)."""
+        result = runner.invoke(app, ["-d", temp_db, "search", "test", "--threshold", "0.8"])
+        assert result.exit_code == 1
+        assert "not enabled" in result.stdout.lower()
+
+
+class TestEmbeddingsCommands:
+    """Test embeddings management CLI commands."""
+
+    def test_embeddings_status_disabled(self, temp_db: str) -> None:
+        """Test embeddings status shows disabled when not enabled."""
+        result = runner.invoke(app, ["-d", temp_db, "embeddings", "status"])
+        # Output should indicate disabled state
+        assert "disabled" in result.stdout.lower()
+
+    def test_embeddings_status_disabled_json(self, temp_db: str) -> None:
+        """Test embeddings status JSON when disabled."""
+        result = runner.invoke(app, ["-d", temp_db, "--json", "embeddings", "status"])
+        # Should contain JSON with enabled: false
+        assert '"enabled": false' in result.stdout.lower()
+
+    def test_embeddings_reindex_not_enabled(self, temp_db: str) -> None:
+        """Test reindex fails when embeddings not enabled."""
+        result = runner.invoke(app, ["-d", temp_db, "embeddings", "reindex"])
+        assert result.exit_code == 1
+        assert "not enabled" in result.stdout.lower()
+
+    def test_embeddings_reindex_entity_not_enabled(self, temp_db: str) -> None:
+        """Test reindex specific entity fails when embeddings not enabled."""
+        result = runner.invoke(app, ["-d", temp_db, "embeddings", "reindex", "Contact"])
+        assert result.exit_code == 1
+        assert "not enabled" in result.stdout.lower()
+
+    def test_embeddings_reindex_with_force_flag(self, temp_db: str) -> None:
+        """Test reindex --force flag (still fails, embeddings not enabled)."""
+        result = runner.invoke(app, ["-d", temp_db, "embeddings", "reindex", "--force"])
+        assert result.exit_code == 1
+        assert "not enabled" in result.stdout.lower()
